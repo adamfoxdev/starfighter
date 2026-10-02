@@ -60,12 +60,14 @@ const sfx = {
   hit: () => beep(200, 0.1, 'sawtooth', 0.06, -100),
   power: () => { beep(600, 0.1, 'triangle', 0.08, 600); setTimeout(() => beep(900, 0.12, 'triangle', 0.08, 500), 90); },
   die: () => { noise(0.8, 0.2); beep(300, 0.8, 'sawtooth', 0.1, -280); },
+  brick: () => beep(300 + Math.min(combo, 12) * 60, 0.07, 'triangle', 0.07),
+  bounce: () => beep(500, 0.06, 'sine', 0.08, 200),
   bomb: () => { noise(0.9, 0.25); beep(120, 0.9, 'sine', 0.2, -90); },
 };
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
@@ -73,7 +75,7 @@ for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random()
 
 function start() {
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2 };
-  bullets = []; ebullets = []; enemies = []; particles = []; powerups = [];
+  bullets = []; ebullets = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
   state = 'play';
 }
@@ -112,8 +114,8 @@ function enemyShoot(e, aimed) {
 function killEnemy(e) {
   burst(e.x, e.y, e.boss ? 80 : 18, e.boss ? '#ffd24a' : '#ff8a3a', e.boss ? 6 : 3.5);
   sfx.boom(); score += e.pts * (e.boss ? 1 : 1);
-  if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: ['weapon', 'shield', 'bomb'][i], w: 18, h: 18 }); }
-  else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life'][Math.floor(Math.random() * 4)], w: 18, h: 18 });
+  if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
+  else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', 'ball', 'ball'][Math.floor(Math.random() * 6)], w: 18, h: 18 });
 }
 function hurtEnemy(e, d) {
   e.hp -= d; e.flash = 4;
@@ -130,6 +132,81 @@ function bomb() {
   if (player.bombs <= 0) return;
   player.bombs--; sfx.bomb(); flash = 25; shake = 20; ebullets = [];
   for (const e of enemies) { if (e.boss) hurtEnemy(e, 25); else if (e.y > -20) hurtEnemy(e, 99); }
+}
+
+// ---------- Bricks & ball (breakout) ----------
+const BRICK_COLS = ['#e33', '#f93', '#fd3', '#4c4', '#39f', '#a5f'];
+function spawnBricks() {
+  const cols = 8, rows = 4 + Math.min(2, Math.floor(level / 2)), bw = W / cols;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    if (r > 1 && (c + r) % 5 === 0) continue; // gaps to let enemies/bullets weave
+    const hp = 1 + (r === 0 ? Math.min(2, Math.floor(level / 2)) : 0) + (r === 1 && level > 2 ? 1 : 0);
+    bricks.push({ x: c * bw + bw / 2, y: -40 - r * 22, w: bw - 3, h: 19, hp, max: hp, col: BRICK_COLS[(r + level) % BRICK_COLS.length] });
+  }
+  if (!balls.length) launchBall();
+}
+function launchBall() {
+  if (balls.length >= 3) { score += 500; return; }
+  balls.push({ x: player.x, y: player.y - 26, vx: rand(-2, 2), vy: -6, r: 6, spd: 6 });
+}
+function hurtBrick(b, d) {
+  b.hp -= d; b.flash = 3;
+  if (b.hp <= 0) {
+    b.dead = true; burst(b.x, b.y, 8, b.col, 3);
+    if (Math.random() < 0.12) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', 'bomb', 'ball'][Math.floor(Math.random() * 4)], w: 18, h: 18 });
+  }
+}
+function updateBricks() {
+  const p = player;
+  for (const b of bricks) {
+    if (b.flash) b.flash--;
+    b.y += b.y < 30 ? 1.2 : 0.12;
+  }
+  // wall reaches the player's zone: crash
+  if (bricks.some(b => b.y + b.h / 2 > H - 130)) { for (const b of bricks) { burst(b.x, b.y, 4, b.col); } bricks = []; waveDone = level; hurtPlayer(); shake = 15; sfx.boom(); }
+  // player bullets & enemy bullets stopped by bricks
+  for (const bl of bullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; hurtBrick(b, 1); sfx.hit(); }
+  for (const bl of ebullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; burst(bl.x, bl.y, 3, '#f6a', 1.5); }
+  // balls
+  for (const ball of balls) {
+    ball.x += ball.vx; ball.y += ball.vy;
+    if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); sfx.bounce(); }
+    if (ball.x > W - ball.r) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); sfx.bounce(); }
+    if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); sfx.bounce(); }
+    if (ball.y > H + 20) { ball.dead = true; combo = 0; continue; }
+    // ship as paddle
+    if (ball.vy > 0 && Math.abs(ball.x - p.x) < 24 && ball.y + ball.r > p.y - 22 && ball.y - ball.r < p.y + 8) {
+      const off = Math.max(-1, Math.min(1, (ball.x - p.x) / 24));
+      ball.spd = Math.min(9, ball.spd + 0.15);
+      const a = off * 1.05; // up to ~60 degrees
+      ball.vx = Math.sin(a) * ball.spd; ball.vy = -Math.cos(a) * ball.spd;
+      ball.y = p.y - 22 - ball.r; combo = 0; sfx.bounce();
+    }
+    // bricks
+    for (const b of bricks) {
+      if (b.dead) continue;
+      const nx = Math.max(b.x - b.w / 2, Math.min(ball.x, b.x + b.w / 2)), ny = Math.max(b.y - b.h / 2, Math.min(ball.y, b.y + b.h / 2));
+      const dx = ball.x - nx, dy = ball.y - ny;
+      if (dx * dx + dy * dy < ball.r * ball.r) {
+        if (Math.abs(dx) > Math.abs(dy)) ball.vx = Math.sign(dx || ball.vx) * Math.abs(ball.vx) * (dx ? 1 : -1) || ball.vx;
+        else ball.vy = (dy === 0 ? -ball.vy : Math.sign(dy) * Math.abs(ball.vy));
+        ball.y += ball.vy * 0.5;
+        combo++; score += 25 * combo; hurtBrick(b, 1); sfx.brick();
+        break;
+      }
+    }
+    // enemies
+    for (const e of enemies) {
+      if (e.dead || e.y < -10) continue;
+      if (Math.abs(ball.x - e.x) < e.w / 2 + ball.r && Math.abs(ball.y - e.y) < e.h / 2 + ball.r) {
+        ball.vy = ball.y > e.y ? Math.abs(ball.vy) : -Math.abs(ball.vy);
+        combo++; score += 25 * combo; hurtEnemy(e, e.boss ? 3 : 2); break;
+      }
+    }
+  }
+  balls = balls.filter(b => !b.dead);
+  bricks = bricks.filter(b => !b.dead);
+  if (waveDone && !bricks.length && waveDone === -level) { waveDone = level; score += 1000; flash = 8; sfx.power(); }
 }
 
 // ---------- Update ----------
@@ -176,8 +253,11 @@ function update() {
     if (--spawnT <= 0) {
       spawn(); spawnT = Math.max(18, 65 - level * 5);
     }
+    if (!bricks.length && waveDone !== level && waveDone !== -level && score >= level * 4000 - 2500) { spawnBricks(); waveDone = -level; }
     if (score >= level * 4000 && !bossAlive) { spawnBoss(); level++; spawnT = 180; }
   }
+
+  updateBricks();
 
   // bullets
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
@@ -225,6 +305,7 @@ function update() {
       if (u.kind === 'weapon') p.weapon = Math.min(4, p.weapon + 1);
       if (u.kind === 'shield') p.shield = 1;
       if (u.kind === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
+      if (u.kind === 'ball') launchBall();
       if (u.kind === 'life') p.lives = Math.min(6, p.lives + 1);
     }
   }
@@ -293,11 +374,22 @@ function draw() {
 
   if (state !== 'title') {
     for (const u of powerups) {
-      const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6' }[u.kind];
+      const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6', ball: '#fff' }[u.kind];
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(u.x, u.y, 10, 0, 6.283); ctx.fill();
-      text({ weapon: 'W', shield: 'S', bomb: 'B', life: '+' }[u.kind], u.x, u.y + 5, 13, '#000', 'center');
+      text({ weapon: 'W', shield: 'S', bomb: 'B', life: '+', ball: 'O' }[u.kind], u.x, u.y + 5, 13, '#000', 'center');
+    }
+    for (const b of bricks) {
+      ctx.fillStyle = b.flash ? '#fff' : b.col; ctx.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, 4);
+      ctx.strokeStyle = b.hp > 1 ? '#fff' : 'rgba(0,0,0,0.5)'; ctx.lineWidth = b.hp > 1 ? 2 : 1; ctx.strokeRect(b.x - b.w / 2 + .5, b.y - b.h / 2 + .5, b.w - 1, b.h - 1);
     }
     for (const e of enemies) drawEnemy(e);
+    for (const ball of balls) {
+      const g = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, 14);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(120,200,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(ball.x - 14, ball.y - 14, 28, 28);
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, 6.283); ctx.fill();
+    }
     ctx.fillStyle = '#9ff'; for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 14);
     ctx.fillStyle = '#f6a'; for (const b of ebullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 6.283); ctx.fill(); }
     if (state !== 'over') drawPlayer();
@@ -309,6 +401,7 @@ function draw() {
     text('LV ' + level, W / 2, 24, 16, '#8f8', 'center');
     for (let i = 0; i < player.lives; i++) drawLifeIcon(20 + i * 18, H - 16);
     text('BOMBS ' + '●'.repeat(player.bombs), W - 10, H - 10, 14, '#f66', 'right');
+    if (combo > 1) text('COMBO x' + combo, W / 2, 48, 16, '#fd5', 'center');
     text('PWR ' + player.weapon, W / 2, H - 10, 14, '#fa4', 'center');
   }
   if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash / 30})`; ctx.fillRect(0, 0, W, H); }
@@ -320,8 +413,9 @@ function draw() {
     if (Math.floor(frame / 30) % 2 === 0 || true) text('PRESS ENTER / TAP TO START', W / 2, 390, 18, Math.floor(Date.now() / 500) % 2 ? '#fff' : '#888', 'center');
     text('ARROWS / WASD  move', W / 2, 460, 14, '#aaa', 'center');
     text('SPACE  fire     B / SHIFT  bomb', W / 2, 484, 14, '#aaa', 'center');
+    text('O power-up: bounce the ball off your ship', W / 2, 532, 14, '#aaa', 'center');
     text('P  pause     touch: drag to fly', W / 2, 508, 14, '#aaa', 'center');
-    text('HI ' + hi, W / 2, 560, 16, '#fd5', 'center');
+    text('HI ' + hi, W / 2, 590, 16, '#fd5', 'center');
   } else if (state === 'pause') {
     text('PAUSED', W / 2, H / 2, 40, '#fff', 'center');
   } else if (state === 'over') {
