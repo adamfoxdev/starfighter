@@ -102,7 +102,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let ballFx, fxMax, bolts, rings, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, rings, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
@@ -111,7 +111,7 @@ for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random()
 function start() {
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 250, pending: 0, lvlFlash: 0 };
   st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
-  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); chaos = null; chaosT = 600;
+  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
   ballFx = newFx(); fxMax = newFx(); bolts = []; rings = []; beamT = 200; bombing = false;
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
@@ -164,6 +164,7 @@ function pickUpgrade(i) {
 // ---------- Helpers ----------
 const rand = (a, b) => a + Math.random() * (b - a);
 function burst(x, y, n, col, spd = 3) {
+  if (particles.length > 900) return;
   for (let i = 0; i < n; i++) {
     const a = Math.random() * 6.283, s = rand(0.5, spd);
     particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(20, 45), max: 45, col });
@@ -185,7 +186,7 @@ const THEMES = [
     spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1]] },
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
-stage = 1; banner = { t: 0 }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); chaos = null; chaosT = 600;
+stage = 1; banner = { t: 0 }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
 ballFx = newFx(); fxMax = newFx(); bolts = []; rings = [];
 blobs = [];
 for (let i = 0; i < 5; i++) blobs.push({ x: Math.random() * W, y: Math.random() * H, r: rand0(90, 200), z: 0.3 + Math.random() * 0.7 });
@@ -240,12 +241,76 @@ function enemyShoot(e, aimed) {
   ebullets.push({ x: e.x, y: e.y + e.h / 2, vx: Math.cos(a) * s, vy: Math.sin(a) * s, w: 8, h: 8 });
 }
 
+// ---------- Carnage: debris, fireballs, chain reactions, kill streaks ----------
+function resetCarnage() { debris = []; booms = []; floats = []; later = []; streak = 0; streakT = 0; kfx = null; hitStop = 0; slowmo = 0; chainDepth = 0; }
+const ENEMY_COL = { drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
+function carnage(e) {
+  const big = e.boss ? 3 : e.w > 40 ? 2 : 1, col = ENEMY_COL[e.type] || '#ff8a3a';
+  booms.push({ x: e.x, y: e.y, t: 0, max: e.boss ? 50 : 20 + big * 4, size: e.boss ? 120 : 24 + big * 14 });
+  const n = e.boss ? 40 : 6 + big * 4;
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, 6.283), sp = rand(1.5, e.boss ? 8 : 5.5);
+    debris.push({ x: e.x + rand(-e.w / 3, e.w / 3), y: e.y + rand(-e.h / 3, e.h / 3), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: rand(0, 6.283), vr: rand(-0.3, 0.3), s: rand(3, e.boss ? 10 : 7), life: rand(35, 70), max: 70, col: i % 3 ? col : '#ffb347', g: 0, hit: !e.boss && i % 2 === 0 });
+  }
+  for (let i = 0; i < 4; i++) particles.push({ x: e.x + rand(-8, 8), y: e.y + rand(-8, 8), vx: rand(-0.5, 0.5), vy: rand(-1.2, -0.2), life: 50, max: 50, col: '#667' });
+  shake = Math.max(shake, e.boss ? 30 : 3 + big * 2); hitStop = Math.max(hitStop, e.boss ? 12 : big >= 2 ? 3 : 0);
+  if (chainDepth < 5) { // chain reaction: wrecks damage their neighbours
+    chainDepth++;
+    for (const o of enemies) if (o !== e && !o.dead && !o.boss && o.y > -10 && Math.hypot(o.x - e.x, o.y - e.y) < 55 + big * 10) hurtEnemy(o, 1 + (e.volatile ? 1 : 0));
+    chainDepth--;
+  }
+}
+function streakReward() {
+  const K = { 3: ['TRIPLE KILL', '#fd5'], 5: ['MULTI KILL', '#fa4'], 10: ['RAMPAGE!', '#f84'], 15: ['MASSACRE!', '#f55'], 25: ['CARNAGE!!', '#f3f'], 40: ['ANNIHILATION!!!', '#fff'] };
+  let k = K[streak]; if (!k && streak > 40 && streak % 20 === 0) k = ['GODLIKE!!!', '#fff'];
+  if (k) { kfx = { t: 90, text: k[0], col: k[1] }; sfx.power(); }
+  if (streak === 10 && player.bombs < 5) player.bombs++;
+  if (streak === 15) powerups.push({ x: rand(60, W - 60), y: 40, kind: SPECIALS[Math.floor(Math.random() * SPECIALS.length)], w: 18, h: 18 });
+  if (streak === 25) bomb(true);
+  if (streak === 40) buff.ghost = buffMax.ghost = 300;
+}
+function updateCarnage() {
+  for (const d of debris) {
+    d.x += d.vx; d.y += d.vy; d.vy += d.g; d.vx *= 0.985; if (!d.g) d.vy *= 0.985; d.rot += d.vr; d.life--;
+    if (d.hit && d.life > d.max - 25) for (const e of enemies) if (!e.dead && !e.boss && e.y > -10 && Math.abs(d.x - e.x) < e.w / 2 + d.s && Math.abs(d.y - e.y) < e.h / 2 + d.s) { d.hit = false; d.life = Math.min(d.life, 8); hurtEnemy(e, 1); break; }
+  }
+  debris = debris.filter(d => d.life > 0 && d.y < H + 40);
+  if (debris.length > 400) debris.splice(0, debris.length - 400);
+  for (const b of booms) b.t++; booms = booms.filter(b => b.t < b.max);
+  for (const f of floats) { f.y -= 0.7; f.t--; } floats = floats.filter(f => f.t > 0);
+  for (const l of later) if (--l.t <= 0) { booms.push({ x: l.x, y: l.y, t: 0, max: 34, size: 75 }); burst(l.x, l.y, 20, '#ffb347', 5); sfx.boom(); shake = Math.max(shake, 18); }
+  later = later.filter(l => l.t > 0);
+  if (streakT > 0 && --streakT <= 0) streak = 0;
+  if (kfx && --kfx.t <= 0) kfx = null;
+}
+function drawCarnage() {
+  for (const d of debris) {
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.rot); ctx.globalAlpha = Math.min(1, d.life / 20); ctx.fillStyle = d.col;
+    ctx.beginPath(); ctx.moveTo(-d.s, -d.s * 0.6); ctx.lineTo(d.s, 0); ctx.lineTo(-d.s * 0.3, d.s * 0.8); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'lighter';
+  for (const b of booms) {
+    const k = b.t / b.max, r = b.size * (0.3 + 0.9 * Math.sqrt(k)), g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+    g.addColorStop(0, `rgba(255,240,200,${0.9 * (1 - k)})`); g.addColorStop(0.4, `rgba(255,140,40,${0.7 * (1 - k)})`); g.addColorStop(1, 'rgba(255,60,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
+    ctx.strokeStyle = `rgba(255,220,160,${0.8 * (1 - k)})`; ctx.lineWidth = 1 + 3 * (1 - k); ctx.beginPath(); ctx.arc(b.x, b.y, r * 0.9, 0, 6.283); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  for (const f of floats) { ctx.globalAlpha = Math.min(1, f.t / 15); text(f.txt, f.x, f.y, f.sz || 11, f.col, 'center'); }
+  ctx.globalAlpha = 1;
+}
+
 function killEnemy(e) {
   burst(e.x, e.y, e.boss ? 80 : 18, e.boss ? '#ffd24a' : '#ff8a3a', e.boss ? 6 : 3.5);
-  sfx.boom(); score += e.pts; addXp(Math.round(e.pts / 10));
+  sfx.boom(); addXp(Math.round(e.pts / 10));
+  streak++; streakT = 150;
+  const gain = Math.round(e.pts * (1 + Math.floor(streak / 10) * 0.5)); score += gain;
+  if (floats.length < 50) floats.push({ x: e.x, y: e.y - 8, txt: '+' + gain, t: 45, col: '#fd5', sz: e.boss ? 22 : 13 });
+  carnage(e); streakReward();
   if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
+  if (e.boss) { slowmo = 50; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
   if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
   if (e.boss) { shake = 30; flash = 20; ebullets = []; hballs = []; beams = []; bricks = bricks.filter(b => !b.armor); for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: i === 1 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
   else if (Math.random() < 0.18) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', ballDrop(), ballDrop(), buffDrop(), buffDrop()][Math.floor(Math.random() * 8)], w: 18, h: 18 });
@@ -253,21 +318,24 @@ function killEnemy(e) {
 function hurtEnemy(e, d) {
   if (e.ghost) return; // phantom, mid-teleport
   if (e.boss && e.kind === 3 && !e.exposed) { e.flash = 2; burst(e.x + rand(-40, 40), e.y + 12, 2, '#8cf', 1.5); return; } // armored
+  if (e.dead) return;
   e.hp -= d; e.flash = 4;
-  if (e.hp <= 0) { killEnemy(e); e.dead = true; } else sfx.hit();
+  if (d >= 1 && floats.length < 50) floats.push({ x: e.x + rand(-10, 10), y: e.y - 12, txt: String(Math.round(d)), t: 28, col: '#fff', sz: 11 });
+  if (d >= 0.5) burst(e.x, e.y, 2, '#fff', 2.5);
+  if (e.hp <= 0) { e.dead = true; killEnemy(e); } else sfx.hit();
 }
 function hurtPlayer() {
   if (buff.ghost > 0) return; // phased out
   if (player.shieldOn) { player.energy = Math.max(0, player.energy - 5); burst(player.x, player.y - 20, 4, '#5ff', 2); return; }
   if (player.inv > 0) return;
   if (player.shield > 0) { player.shield = 0; player.inv = 60; sfx.hit(); burst(player.x, player.y, 15, '#5ff', 3); return; }
-  player.lives--; player.inv = 150; player.weapon = Math.max(1, player.weapon - 1);
+  player.lives--; streak = 0; player.inv = 150; player.weapon = Math.max(1, player.weapon - 1);
   burst(player.x, player.y, 40, '#7df', 5); sfx.die(); shake = 15;
   if (player.lives <= 0) { state = 'over'; if (score > hi) { hi = score; try { localStorage.setItem('starfighter_hi', hi); } catch(e){} } }
 }
-function bomb() {
-  if (player.bombs <= 0) return;
-  player.bombs--; sfx.bomb(); bombing = true; flash = 25; shake = 20; ebullets = [];
+function bomb(free) {
+  if (!free) { if (player.bombs <= 0) return; player.bombs--; }
+  sfx.bomb(); bombing = true; flash = 25; shake = 20; ebullets = [];
   for (const e of enemies) { if (e.boss) hurtEnemy(e, 25); else if (e.y > -20) hurtEnemy(e, 99); }
   bombing = false;
 }
@@ -510,6 +578,7 @@ function hurtBrick(b, d) {
   b.hp -= d; b.flash = 3;
   if (b.hp <= 0) {
     b.dead = true; burst(b.x, b.y, 8, b.col, 3); addXp(4);
+    for (let i = 0; i < 7; i++) debris.push({ x: b.x + rand(-b.w / 2, b.w / 2), y: b.y + rand(-8, 8), vx: rand(-2.5, 2.5), vy: rand(-3, 0.5), rot: rand(0, 6.283), vr: rand(-0.3, 0.3), s: rand(3, 6), life: rand(40, 70), max: 70, col: b.col, g: 0.18, hit: false });
     if (Math.random() < 0.28) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', ballDrop(), ballDrop(), buffDrop()][Math.floor(Math.random() * 5)], w: 18, h: 18 });
   }
 }
@@ -635,6 +704,8 @@ function update() {
   for (const b of blobs) { b.y += b.z * 0.25; if (b.y - b.r > H) { b.y = -b.r; b.x = Math.random() * W; } }
   for (const s of stars) { s.y += s.z * (state === 'play' ? 1.5 : 0.6); if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
   if (state !== 'play') return;
+  if (hitStop > 0) { hitStop--; return; } // impact freeze on big kills
+  if (slowmo > 0) slowmo--;
 
   // player movement
   const p = player, sp = 5 + 0.4 * st.spd;
@@ -671,8 +742,8 @@ function update() {
   const bossAlive = enemies.some(e => e.boss);
   if (!bossAlive) {
     if (--spawnT <= 0) {
-      spawn(); if (Math.random() < 0.25) spawn();
-      spawnT = Math.max(12, 48 - level * 4);
+      spawn(); if (Math.random() < 0.35) spawn();
+      spawnT = Math.max(10, 40 - level * 4);
     }
     if (!bricks.length && waveDone !== level && waveDone !== -level && score >= level * 4000 - 2500) { spawnBricks(); waveDone = -level; }
     if (score >= level * 4000 && !bossAlive) { spawnBoss(); level++; spawnT = 180; }
@@ -685,6 +756,7 @@ function update() {
   updateChaos();
   updateHBalls();
   updateBuffs();
+  updateCarnage();
   if (banner.t > 0) banner.t--;
 
   // bullets
@@ -992,6 +1064,7 @@ function draw() {
     for (const b of ebullets) { ctx.fillStyle = b.home ? '#c6f' : '#f6a'; ctx.beginPath(); ctx.arc(b.x, b.y, b.home ? 6 : 4, 0, 6.283); ctx.fill(); if (b.home) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); } }
     if (state !== 'over') drawPlayer();
     drawBuffs();
+    drawCarnage();
     for (const q of particles) { ctx.globalAlpha = q.life / q.max; ctx.fillStyle = q.col; ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3); }
     ctx.globalAlpha = 1;
     // HUD
@@ -1039,6 +1112,8 @@ function draw() {
     }
     for (let i = 0; i < player.lives; i++) drawLifeIcon(20 + i * 18, H - 16);
     text('BOMBS ' + '●'.repeat(player.bombs), W - 10, H - 10, 14, '#f66', 'right');
+    if (streak >= 3) text(streak + ' KILL STREAK  x' + (1 + Math.floor(streak / 10) * 0.5), W - 10, 44, 12, '#fa4', 'right');
+    if (kfx) { const k = kfx, pop = 1 + 0.5 * Math.max(0, (k.t - 70) / 20); ctx.globalAlpha = Math.min(1, k.t / 25); text(k.text, W / 2, 230, Math.round(32 * pop), k.col, 'center'); ctx.globalAlpha = 1; }
     if (combo > 1) text('COMBO x' + combo, W / 2, 48, 16, '#fd5', 'center');
     text('PWR ' + player.weapon, W / 2, H - 10, 14, '#fa4', 'center');
     text(autoFire ? 'AUTO-FIRE ON [T]' : 'auto-fire off [T]', W / 2, H - 26, 11, autoFire ? '#6f6' : '#567', 'center');
@@ -1091,7 +1166,7 @@ function draw() {
 let last = performance.now(), acc = 0;
 function loop(t) {
   acc += Math.min(100, t - last); last = t;
-  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  for (let step = slowmo > 0 ? 1000 / 22 : 1000 / 60; acc >= step; step = slowmo > 0 ? 1000 / 22 : 1000 / 60) { update(); acc -= step; }
   draw();
   requestAnimationFrame(loop);
 }
