@@ -21,8 +21,8 @@ const ctx = cv.getContext('2d');
 const keys = {};
 addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'Enter' || e.code === 'Space') { audioInit(); if (state !== 'play') start(); }
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code) || e.code.startsWith('Numpad')) e.preventDefault();
+  if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') { audioInit(); if (state !== 'play') start(); }
   if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -290,10 +290,10 @@ function update() {
   // player movement
   const p = player, sp = 5;
   let dx = 0, dy = 0;
-  if (keys.ArrowLeft || keys.KeyA) dx -= 1;
-  if (keys.ArrowRight || keys.KeyD) dx += 1;
-  if (keys.ArrowUp || keys.KeyW) dy -= 1;
-  if (keys.ArrowDown || keys.KeyS) dy += 1;
+  if (keys.ArrowLeft || keys.KeyA || keys.Numpad4 || keys.Numpad7 || keys.Numpad1) dx -= 1;
+  if (keys.ArrowRight || keys.KeyD || keys.Numpad6 || keys.Numpad9 || keys.Numpad3) dx += 1;
+  if (keys.ArrowUp || keys.KeyW || keys.Numpad8 || keys.Numpad7 || keys.Numpad9) dy -= 1;
+  if (keys.ArrowDown || keys.KeyS || keys.Numpad2 || keys.Numpad1 || keys.Numpad3) dy += 1;
   if (dx && dy) { dx *= 0.707; dy *= 0.707; }
   p.x += dx * sp; p.y += dy * sp;
   if (touch) { // follow finger, offset above it
@@ -306,7 +306,7 @@ function update() {
 
   // shooting (auto-fire on touch)
   if (p.cd > 0) p.cd--;
-  if ((keys.Space || touch) && p.cd <= 0) {
+  if ((keys.Space || keys.Numpad0 || touch) && p.cd <= 0) {
     p.cd = p.weapon >= 3 ? 7 : 9;
     const b = (ox, vx) => bullets.push({ x: p.x + ox, y: p.y - 18, vx, vy: -11, w: 4, h: 14 });
     b(0, 0);
@@ -502,8 +502,8 @@ function draw() {
     text('STARFIGHTER', W / 2, 250, 48, '#6cf', 'center');
     text('— ARCADE —', W / 2, 285, 18, '#fd5', 'center');
     if (Math.floor(frame / 30) % 2 === 0 || true) text('PRESS ENTER / TAP TO START', W / 2, 390, 18, Math.floor(Date.now() / 500) % 2 ? '#fff' : '#888', 'center');
-    text('ARROWS / WASD  move', W / 2, 460, 14, '#aaa', 'center');
-    text('SPACE fire   X missiles   C shield   B bomb', W / 2, 484, 14, '#aaa', 'center');
+    text('ARROWS / WASD / NUMPAD  move', W / 2, 460, 14, '#aaa', 'center');
+    text('SPACE / NUM0 fire   X missiles   C shield   B bomb', W / 2, 484, 14, '#aaa', 'center');
     text('O power-up: bounce the ball off your ship', W / 2, 532, 14, '#aaa', 'center');
     text('P  pause     touch: drag to fly', W / 2, 508, 14, '#aaa', 'center');
     text('HI ' + hi, W / 2, 590, 16, '#fd5', 'center');
