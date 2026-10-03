@@ -97,7 +97,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, rings, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
@@ -106,7 +106,8 @@ for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random()
 function start() {
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 250, pending: 0, lvlFlash: 0 };
   st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
-  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; beamT = 200; bombing = false;
+  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = [];
+  ballFx = { fire: 0, mega: 0, chain: 0, home: 0, pulse: 0 }; fxMax = { ...ballFx }; bolts = []; rings = []; beamT = 200; bombing = false;
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
   state = 'play';
@@ -126,7 +127,7 @@ const UPGRADES = [
   { id: 'reg', name: 'Recharger', desc: '+25% energy regeneration', max: 6 },
   { id: 'shd', name: 'Shield Matrix', desc: 'Shield drains 12% less energy', max: 5 },
   { id: 'msl', name: 'Missile Pods', desc: 'Stronger, cheaper missiles; +pair every 3', max: 8 },
-  { id: 'ball', name: 'Ball Core', desc: 'Ball hits harder', max: 5 },
+  { id: 'ball', name: 'Ball Core', desc: 'Ball hits harder; specials last longer', max: 5 },
   { id: 'mag', name: 'Tractor Field', desc: 'Pull in power-ups from afar', max: 4 },
   { id: 'hull', name: 'Hull Repair', desc: '+1 life', max: 99, ok: () => player.lives < 6, apply: () => player.lives++, noLevel: true },
   { id: 'bay', name: 'Bomb Bay', desc: '+2 bombs', max: 99, ok: () => player.bombs < 5, apply: () => player.bombs = Math.min(5, player.bombs + 2), noLevel: true },
@@ -180,6 +181,7 @@ const THEMES = [
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
 stage = 1; banner = { t: 0 }; beams = [];
+ballFx = { fire: 0, mega: 0, chain: 0, home: 0, pulse: 0 }; fxMax = { ...ballFx }; bolts = []; rings = [];
 blobs = [];
 for (let i = 0; i < 5; i++) blobs.push({ x: Math.random() * W, y: Math.random() * H, r: rand0(90, 200), z: 0.3 + Math.random() * 0.7 });
 function rand0(a, b) { return a + Math.random() * (b - a); }
@@ -232,8 +234,8 @@ function killEnemy(e) {
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
   if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
-  if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
-  else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', 'ball', 'ball'][Math.floor(Math.random() * 6)], w: 18, h: 18 });
+  if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: i === 1 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
+  else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: [ 'weapon', 'shield', 'bomb', 'life', ballDrop(), ballDrop()][Math.floor(Math.random() * 6)], w: 18, h: 18 });
 }
 function hurtEnemy(e, d) {
   e.hp -= d; e.flash = 4;
@@ -319,6 +321,38 @@ function spawnBricks() {
   }
   if (!balls.length) launchBall();
 }
+const SPECIALS = ['fire', 'multi', 'mega', 'chain', 'home', 'pulse'];
+const FX = { fire: ['FIRE', '#ff6a1f'], mega: ['MEGA', '#c86bff'], chain: ['ARC', '#ffe94a'], home: ['SEEK', '#4cd2ff'], pulse: ['PULSE', '#ff8ccf'] };
+const fxDur = () => 600 + 120 * st.ball;
+const ballDrop = () => Math.random() < 0.6 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : 'ball';
+function grantFx(kind) {
+  if (!balls.length) launchBall();
+  if (kind === 'multi') {
+    for (const b of balls.slice()) for (const da of [-0.45, 0.45]) {
+      if (balls.length >= 6) break;
+      const c = Math.cos(da), sn = Math.sin(da);
+      balls.push({ ...b, vx: b.vx * c - b.vy * sn, vy: b.vx * sn + b.vy * c });
+    }
+  } else ballFx[kind] = fxMax[kind] = fxDur();
+}
+function arc(x, y, skip, n, dmgE, dmgB) { // chain lightning to nearest targets
+  const t = [];
+  for (const b of bricks) if (!b.dead && b !== skip) t.push({ o: b, d: Math.hypot(b.x - x, b.y - y), brick: true });
+  for (const e of enemies) if (!e.dead && e !== skip && e.y > -10) t.push({ o: e, d: Math.hypot(e.x - x, e.y - y) });
+  t.sort((a, b) => a.d - b.d);
+  for (const q of t.slice(0, n)) {
+    if (q.d > 170) break;
+    bolts.push({ x1: x, y1: y, x2: q.o.x, y2: q.o.y, t: 10 });
+    if (q.brick) hurtBrick(q.o, dmgB); else hurtEnemy(q.o, dmgE);
+  }
+}
+function pulse(x, y) { // shockwave from a paddle hit
+  rings.push({ x, y, t: 0 }); noise(0.2, 0.1);
+  for (const eb of ebullets) if (Math.hypot(eb.x - x, eb.y - y) < 140) { eb.dead = true; burst(eb.x, eb.y, 2, '#f9c', 1.5); }
+  ebullets = ebullets.filter(b => !b.dead);
+  for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - x, e.y - y) < 120) hurtEnemy(e, 2 + st.ball);
+  for (const b of bricks) if (!b.dead && Math.hypot(b.x - x, b.y - y) < 120) hurtBrick(b, 1);
+}
 function launchBall() {
   if (balls.length >= 3) { score += 500; return; }
   balls.push({ x: player.x, y: player.y - 26, vx: rand(-2, 2), vy: -6, r: 6, spd: 6 });
@@ -327,7 +361,7 @@ function hurtBrick(b, d) {
   b.hp -= d; b.flash = 3;
   if (b.hp <= 0) {
     b.dead = true; burst(b.x, b.y, 8, b.col, 3); addXp(4);
-    if (Math.random() < 0.12) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', 'bomb', 'ball'][Math.floor(Math.random() * 4)], w: 18, h: 18 });
+    if (Math.random() < 0.16) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', ballDrop(), ballDrop()][Math.floor(Math.random() * 4)], w: 18, h: 18 });
   }
 }
 function updateBricks() {
@@ -343,6 +377,22 @@ function updateBricks() {
   for (const bl of ebullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; burst(bl.x, bl.y, 3, '#f6a', 1.5); }
   // balls
   for (const ball of balls) {
+    ball.r = ballFx.mega > 0 ? 11 : 6;
+    const big = ballFx.mega > 0 ? 2 : 1;
+    // seeking: steer upward-moving balls toward the nearest target
+    if (ballFx.home > 0 && ball.vy < 0 && !ball.mag) {
+      let t = null, best = 1e9;
+      for (const e of enemies) if (!e.dead && e.y > 0) { const d = Math.hypot(e.x - ball.x, e.y - ball.y); if (d < best) { best = d; t = e; } }
+      if (!t) for (const b of bricks) if (!b.dead && b.y > 0) { const d = Math.hypot(b.x - ball.x, b.y - ball.y); if (d < best) { best = d; t = b; } }
+      if (t) {
+        const sp = Math.hypot(ball.vx, ball.vy), a = Math.atan2(ball.vy, ball.vx);
+        let d = Math.atan2(t.y - ball.y, t.x - ball.x) - a; d = Math.atan2(Math.sin(d), Math.cos(d));
+        const na = a + Math.max(-0.05, Math.min(0.05, d));
+        ball.vx = Math.cos(na) * sp; ball.vy = Math.sin(na) * sp;
+      }
+    }
+    if (frame % 2 === 0 && (ballFx.fire > 0 || ballFx.chain > 0 || ballFx.home > 0 || ballFx.mega > 0))
+      particles.push({ x: ball.x + rand(-2, 2), y: ball.y + rand(-2, 2), vx: rand(-0.3, 0.3), vy: rand(-0.3, 0.3), life: 16, max: 16, col: ballFx.fire > 0 ? '#f82' : ballFx.chain > 0 ? '#fe4' : ballFx.home > 0 ? '#4cf' : '#c6f' });
     // magnet: once the ball slips past the ship, pull it back and relaunch
     if (!ball.mag && ball.vy > 0 && ball.y > p.y + 8) { ball.mag = true; sfx.shieldOn(); }
     if (ball.mag) {
@@ -368,6 +418,7 @@ function updateBricks() {
       const a = off * 1.05; // up to ~60 degrees
       ball.vx = Math.sin(a) * ball.spd; ball.vy = -Math.cos(a) * ball.spd;
       ball.y = p.y - 22 - ball.r; combo = 0; sfx.bounce();
+      if (ballFx.pulse > 0) pulse(ball.x, p.y - 22);
     }
     // bricks
     for (const b of bricks) {
@@ -375,10 +426,16 @@ function updateBricks() {
       const nx = Math.max(b.x - b.w / 2, Math.min(ball.x, b.x + b.w / 2)), ny = Math.max(b.y - b.h / 2, Math.min(ball.y, b.y + b.h / 2));
       const dx = ball.x - nx, dy = ball.y - ny;
       if (dx * dx + dy * dy < ball.r * ball.r) {
+        const dmg = (1 + Math.floor(st.ball / 2)) * big;
+        if (ballFx.fire > 0) { // fireball pierces straight through
+          if (frame - (b.fireT || -99) >= 6) { b.fireT = frame; combo++; score += 25 * combo; hurtBrick(b, dmg + 1); sfx.brick(); if (ballFx.chain > 0) arc(b.x, b.y, b, 3, 2 + st.ball, dmg); }
+          continue;
+        }
         if (Math.abs(dx) > Math.abs(dy)) ball.vx = Math.sign(dx || ball.vx) * Math.abs(ball.vx) * (dx ? 1 : -1) || ball.vx;
         else ball.vy = (dy === 0 ? -ball.vy : Math.sign(dy) * Math.abs(ball.vy));
         ball.y += ball.vy * 0.5;
-        combo++; score += 25 * combo; hurtBrick(b, 1 + Math.floor(st.ball / 2)); sfx.brick();
+        combo++; score += 25 * combo; hurtBrick(b, dmg); sfx.brick();
+        if (ballFx.chain > 0) arc(b.x, b.y, b, 3, 2 + st.ball, dmg);
         break;
       }
     }
@@ -386,11 +443,21 @@ function updateBricks() {
     for (const e of enemies) {
       if (e.dead || e.y < -10) continue;
       if (Math.abs(ball.x - e.x) < e.w / 2 + ball.r && Math.abs(ball.y - e.y) < e.h / 2 + ball.r) {
+        const dmg = ((e.boss ? 3 : 2) + st.ball) * big;
+        if (ballFx.fire > 0) {
+          if (frame - (e.fireT || -99) >= 6) { e.fireT = frame; combo++; score += 25 * combo; hurtEnemy(e, dmg + 1); if (ballFx.chain > 0) arc(e.x, e.y, e, 3, dmg, 1); }
+          continue;
+        }
         ball.vy = ball.y > e.y ? Math.abs(ball.vy) : -Math.abs(ball.vy);
-        combo++; score += 25 * combo; hurtEnemy(e, (e.boss ? 3 : 2) + st.ball); break;
+        combo++; score += 25 * combo; hurtEnemy(e, dmg);
+        if (ballFx.chain > 0) arc(e.x, e.y, e, 3, dmg, 1);
+        break;
       }
     }
   }
+  for (const k in ballFx) if (ballFx[k] > 0) ballFx[k]--;
+  for (const b of bolts) b.t--; bolts = bolts.filter(b => b.t > 0);
+  for (const r of rings) r.t++; rings = rings.filter(r => r.t < 20);
   balls = balls.filter(b => !b.dead);
   bricks = bricks.filter(b => !b.dead);
   if (waveDone && !bricks.length && waveDone === -level) { waveDone = level; score += 1000; flash = 8; sfx.power(); }
@@ -530,6 +597,7 @@ function update() {
       if (u.kind === 'shield') p.shield = 1;
       if (u.kind === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
       if (u.kind === 'ball') launchBall();
+      if (u.kind === 'multi' || u.kind in ballFx) grantFx(u.kind);
       if (u.kind === 'life') p.lives = Math.min(6, p.lives + 1);
     }
   }
@@ -631,9 +699,9 @@ function draw() {
 
   if (state !== 'title') {
     for (const u of powerups) {
-      const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6', ball: '#fff' }[u.kind];
+      const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6', ball: '#fff', fire: '#f62', multi: '#6f6', mega: '#c6f', chain: '#fe4', home: '#4cf', pulse: '#f8c' }[u.kind];
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(u.x, u.y, 10, 0, 6.283); ctx.fill();
-      text({ weapon: 'W', shield: 'S', bomb: 'B', life: '+', ball: 'O' }[u.kind], u.x, u.y + 5, 13, '#000', 'center');
+      text({ weapon: 'W', shield: 'S', bomb: 'B', life: '+', ball: 'O', fire: 'F', multi: 'x3', mega: 'M', chain: 'Z', home: 'H', pulse: 'P' }[u.kind], u.x, u.y + 5, 13, '#000', 'center');
     }
     for (const bm of beams) {
       if (bm.t < 70) { ctx.strokeStyle = `rgba(120,255,240,${0.2 + 0.3 * Math.sin(bm.t / 3) ** 2})`; ctx.lineWidth = 1; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(bm.x, 0); ctx.lineTo(bm.x, H); ctx.stroke(); ctx.setLineDash([]); }
@@ -647,11 +715,18 @@ function draw() {
     for (const e of enemies) drawEnemy(e);
     for (const m of missiles) { ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(m.a + Math.PI / 2); poly([[0, -8], [3.5, 4], [-3.5, 4]], '#fff', '#f84'); poly([[-3.5, 4], [-6, 8], [-2, 5]], '#f84'); poly([[3.5, 4], [6, 8], [2, 5]], '#f84'); ctx.restore(); }
     for (const ball of balls) {
-      const g = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, 14);
-      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(120,200,255,0)');
-      ctx.fillStyle = g; ctx.fillRect(ball.x - 14, ball.y - 14, 28, 28);
+      const gc = ballFx.fire > 0 ? '255,120,30' : ballFx.chain > 0 ? '255,230,70' : ballFx.home > 0 ? '80,210,255' : ballFx.mega > 0 ? '200,110,255' : '120,200,255';
+      const gr = ball.r * 2.4, g = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, gr);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.4, `rgba(${gc},0.6)`); g.addColorStop(1, `rgba(${gc},0)`);
+      ctx.fillStyle = g; ctx.fillRect(ball.x - gr, ball.y - gr, gr * 2, gr * 2);
       if (ball.mag) { ctx.strokeStyle = 'rgba(120,220,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(ball.x, ball.y); ctx.stroke(); }
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, 6.283); ctx.fill();
+    }
+    for (const r of rings) { ctx.strokeStyle = `rgba(255,140,210,${1 - r.t / 20})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, 10 + r.t * 6.5, 0, 6.283); ctx.stroke(); }
+    for (const b of bolts) {
+      ctx.strokeStyle = `rgba(255,240,120,${b.t / 10})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x1, b.y1);
+      for (let k = 1; k < 4; k++) ctx.lineTo(b.x1 + (b.x2 - b.x1) * k / 4 + rand(-8, 8), b.y1 + (b.y2 - b.y1) * k / 4 + rand(-8, 8));
+      ctx.lineTo(b.x2, b.y2); ctx.stroke();
     }
     ctx.fillStyle = '#9ff'; for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 14);
     ctx.fillStyle = '#f6a'; for (const b of ebullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 6.283); ctx.fill(); }
@@ -674,6 +749,14 @@ function draw() {
       ctx.globalAlpha = 1;
     }
     if (player.lvlFlash > 0) text('LEVEL UP!', player.x, player.y - 40 - (90 - player.lvlFlash) * 0.3, 16, `rgba(150,255,150,${Math.min(1, player.lvlFlash / 30)})`, 'center');
+    // active ball specials
+    let fi = 0;
+    for (const k in FX) if (ballFx[k] > 0) {
+      const y = H - 62 - fi++ * 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(10, y, 78, 12);
+      ctx.fillStyle = FX[k][1]; ctx.globalAlpha = 0.85; ctx.fillRect(10, y, 78 * ballFx[k] / fxMax[k], 12); ctx.globalAlpha = 1;
+      text(FX[k][0], 14, y + 10, 11, '#000');
+    }
     // energy bar
     const ep = player.energy / maxEnergy();
     ctx.fillStyle = '#012'; ctx.fillRect(10, H - 44, 100, 8);
