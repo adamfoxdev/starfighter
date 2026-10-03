@@ -35,7 +35,8 @@ addEventListener('keydown', e => {
   const code = keyCode(e);
   keys[code] = true; keys[e.code] = true;
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code) || code.startsWith('Numpad') || e.location === 3) e.preventDefault();
-  if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { audioInit(); if (state !== 'play') start(); }
+  if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { audioInit(); if (state === 'title' || state === 'over') start(); }
+  if (state === 'upgrade') { const n = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[code]; if (n !== undefined) pickUpgrade(n); }
   if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
 });
 addEventListener('keyup', e => { keys[keyCode(e)] = false; keys[e.code] = false; });
@@ -53,7 +54,12 @@ function readTouches(e) {
     else if (!touch) touch = { x, y };
   }
 }
-cv.addEventListener('touchstart', e => { usedTouch = true; audioInit(); if (state !== 'play') start(); readTouches(e); e.preventDefault(); }, {passive:false});
+cv.addEventListener('touchstart', e => { usedTouch = true; audioInit(); if (state === 'title' || state === 'over') start(); readTouches(e); if (state === 'upgrade') pickAt(e.touches[0]); e.preventDefault(); }, {passive:false});
+cv.addEventListener('click', e => { if (state === 'upgrade') pickAt(e); });
+function pickAt(pt) {
+  const r = cv.getBoundingClientRect(), y = (pt.clientY - r.top) / r.height * H;
+  for (let i = 0; i < upChoices.length; i++) if (y >= CARD_Y + i * 120 && y <= CARD_Y + i * 120 + 106) pickUpgrade(i);
+}
 cv.addEventListener('touchmove', e => { readTouches(e); e.preventDefault(); }, {passive:false});
 cv.addEventListener('touchend', e => { readTouches(e); e.preventDefault(); }, {passive:false});
 cv.addEventListener('touchcancel', e => readTouches(e));
@@ -91,17 +97,61 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
 for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 1.7 });
 
 function start() {
-  player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0 };
+  player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 80, pending: 0, lvlFlash: 0 };
+  st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
   state = 'play';
+}
+
+// ---------- Ship leveling ----------
+const CARD_Y = 190;
+const maxEnergy = () => 100 + 20 * st.enr;
+const dmgMul = () => 1 + 0.25 * st.dmg;
+const mslCost = () => Math.max(10, 20 - st.msl);
+const UPGRADES = [
+  { id: 'dmg', name: 'Plasma Cores', desc: '+25% main gun damage', max: 8 },
+  { id: 'rate', name: 'Rapid Fire', desc: 'Main gun fires 10% faster', max: 6 },
+  { id: 'spd', name: 'Thrusters', desc: '+8% ship speed', max: 5 },
+  { id: 'wpn', name: 'Cannon Array', desc: 'Add shot streams (weapon +1)', max: 3, ok: () => player.weapon < 4, apply: () => player.weapon++ },
+  { id: 'enr', name: 'Capacitor', desc: '+20 max energy', max: 6 },
+  { id: 'reg', name: 'Recharger', desc: '+25% energy regeneration', max: 6 },
+  { id: 'shd', name: 'Shield Matrix', desc: 'Shield drains 12% less energy', max: 5 },
+  { id: 'msl', name: 'Missile Pods', desc: 'Missiles: damage, blast, cost; extra pair every 3', max: 8 },
+  { id: 'ball', name: 'Ball Core', desc: 'Ball hits harder', max: 5 },
+  { id: 'mag', name: 'Tractor Field', desc: 'Pull in power-ups from afar', max: 4 },
+  { id: 'hull', name: 'Hull Repair', desc: '+1 life', max: 99, ok: () => player.lives < 6, apply: () => player.lives++, noLevel: true },
+  { id: 'bay', name: 'Bomb Bay', desc: '+2 bombs', max: 99, ok: () => player.bombs < 5, apply: () => player.bombs = Math.min(5, player.bombs + 2), noLevel: true },
+];
+function addXp(n) {
+  const p = player; if (!p || state === 'over') return;
+  p.xp += n;
+  while (p.xp >= p.xpNext) { p.xp -= p.xpNext; p.lvl++; p.pending++; p.xpNext = Math.round(80 * Math.pow(1.3, p.lvl - 1)); p.lvlFlash = 90; sfx.power(); }
+}
+function openUpgrade() {
+  const pool = UPGRADES.filter(u => st[u.id] < u.max && (!u.ok || u.ok()));
+  upChoices = [];
+  while (upChoices.length < 3 && pool.length) upChoices.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  if (!upChoices.length) { player.pending = 0; return; }
+  upFrame = frame; state = 'upgrade';
+}
+function pickUpgrade(i) {
+  if (state !== 'upgrade' || frame - upFrame < 30 || !upChoices[i]) return;
+  const u = upChoices[i];
+  if (u.apply) u.apply();
+  if (!u.noLevel) st[u.id]++;
+  player.energy = Math.min(maxEnergy(), player.energy + 30);
+  sfx.power(); burst(player.x, player.y, 25, '#8f8', 4);
+  player.pending--; player.inv = Math.max(player.inv, 90);
+  state = 'play';
+  if (player.pending > 0) openUpgrade();
 }
 
 // ---------- Helpers ----------
@@ -137,7 +187,7 @@ function enemyShoot(e, aimed) {
 
 function killEnemy(e) {
   burst(e.x, e.y, e.boss ? 80 : 18, e.boss ? '#ffd24a' : '#ff8a3a', e.boss ? 6 : 3.5);
-  sfx.boom(); score += e.pts * (e.boss ? 1 : 1);
+  sfx.boom(); score += e.pts; addXp(Math.round(e.pts / 10));
   if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
   else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', 'ball', 'ball'][Math.floor(Math.random() * 6)], w: 18, h: 18 });
 }
@@ -162,23 +212,24 @@ function bomb() {
 // ---------- Secondary weapons ----------
 function fireMissiles() {
   const p = player;
-  for (const sx of [-1, 1]) missiles.push({ x: p.x + sx * 14, y: p.y, vx: sx * 2.5, vy: -2, spd: 3, w: 8, h: 14, a: -Math.PI / 2 });
-  p.energy -= 20; p.mcd = 20; sfx.missile();
+  const pairs = 1 + Math.floor(st.msl / 3);
+  for (let k = 0; k < pairs; k++) for (const sx of [-1, 1]) missiles.push({ x: p.x + sx * (14 + k * 8), y: p.y, vx: sx * (2.5 + k), vy: -2, spd: 3, w: 8, h: 14, a: -Math.PI / 2 });
+  p.energy -= mslCost(); p.mcd = 20; sfx.missile();
 }
 function explode(x, y) {
   burst(x, y, 22, '#ffb347', 4.5); sfx.boom(); shake = Math.max(shake, 4);
-  for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - x, e.y - y) < 55) hurtEnemy(e, 3);
-  for (const b of bricks) if (!b.dead && Math.hypot(b.x - x, b.y - y) < 55) hurtBrick(b, 2);
+  for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - x, e.y - y) < 55 + 5 * st.msl) hurtEnemy(e, 3 + st.msl);
+  for (const b of bricks) if (!b.dead && Math.hypot(b.x - x, b.y - y) < 55 + 5 * st.msl) hurtBrick(b, 2);
 }
 function updateSecondary() {
   const p = player;
   if (p.mcd > 0) p.mcd--;
-  if ((keys.KeyX || keys.KeyZ || btnMissile) && p.mcd <= 0 && p.energy >= 20) fireMissiles();
+  if ((keys.KeyX || keys.KeyZ || btnMissile) && p.mcd <= 0 && p.energy >= mslCost()) fireMissiles();
   const want = (keys.KeyC || keys.KeyV || btnShield) && p.energy > 0 && p.lock <= 0;
   if (want && !p.shieldOn) sfx.shieldOn();
   p.shieldOn = want;
-  if (want) { p.energy -= 0.6; if (p.energy <= 0) { p.energy = 0; p.lock = 90; p.shieldOn = false; sfx.hit(); } }
-  else { if (p.lock > 0) p.lock--; p.energy = Math.min(100, p.energy + (p.lock > 0 ? 0.1 : 0.3)); }
+  if (want) { p.energy -= 0.6 * Math.pow(0.88, st.shd); if (p.energy <= 0) { p.energy = 0; p.lock = 90; p.shieldOn = false; sfx.hit(); } }
+  else { if (p.lock > 0) p.lock--; p.energy = Math.min(maxEnergy(), p.energy + (p.lock > 0 ? 0.1 : 0.3) * (1 + 0.25 * st.reg)); }
 
   for (const m of missiles) {
     let t = null, best = 1e9;
@@ -196,7 +247,7 @@ function updateSecondary() {
     const box = { x: m.x, y: m.y, w: 10, h: 10 };
     if (enemies.some(e => !e.dead && e.y > -10 && hitRect(box, e)) || bricks.some(b => !b.dead && hitRect(box, b))) {
       m.dead = true;
-      for (const e of enemies) if (!e.dead && e.y > -10 && hitRect(box, e)) { hurtEnemy(e, 6); break; }
+      for (const e of enemies) if (!e.dead && e.y > -10 && hitRect(box, e)) { hurtEnemy(e, 6 + 2 * st.msl); break; }
       explode(m.x, m.y);
     }
   }
@@ -222,7 +273,7 @@ function launchBall() {
 function hurtBrick(b, d) {
   b.hp -= d; b.flash = 3;
   if (b.hp <= 0) {
-    b.dead = true; burst(b.x, b.y, 8, b.col, 3);
+    b.dead = true; burst(b.x, b.y, 8, b.col, 3); addXp(4);
     if (Math.random() < 0.12) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', 'bomb', 'ball'][Math.floor(Math.random() * 4)], w: 18, h: 18 });
   }
 }
@@ -235,7 +286,7 @@ function updateBricks() {
   // wall reaches the player's zone: crash
   if (bricks.some(b => b.y + b.h / 2 > H - 130)) { for (const b of bricks) { burst(b.x, b.y, 4, b.col); } bricks = []; waveDone = level; hurtPlayer(); shake = 15; sfx.boom(); }
   // player bullets & enemy bullets stopped by bricks
-  for (const bl of bullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; hurtBrick(b, 1); sfx.hit(); }
+  for (const bl of bullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; hurtBrick(b, bl.d || 1); sfx.hit(); }
   for (const bl of ebullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; burst(bl.x, bl.y, 3, '#f6a', 1.5); }
   // balls
   for (const ball of balls) {
@@ -274,7 +325,7 @@ function updateBricks() {
         if (Math.abs(dx) > Math.abs(dy)) ball.vx = Math.sign(dx || ball.vx) * Math.abs(ball.vx) * (dx ? 1 : -1) || ball.vx;
         else ball.vy = (dy === 0 ? -ball.vy : Math.sign(dy) * Math.abs(ball.vy));
         ball.y += ball.vy * 0.5;
-        combo++; score += 25 * combo; hurtBrick(b, 1); sfx.brick();
+        combo++; score += 25 * combo; hurtBrick(b, 1 + Math.floor(st.ball / 2)); sfx.brick();
         break;
       }
     }
@@ -283,7 +334,7 @@ function updateBricks() {
       if (e.dead || e.y < -10) continue;
       if (Math.abs(ball.x - e.x) < e.w / 2 + ball.r && Math.abs(ball.y - e.y) < e.h / 2 + ball.r) {
         ball.vy = ball.y > e.y ? Math.abs(ball.vy) : -Math.abs(ball.vy);
-        combo++; score += 25 * combo; hurtEnemy(e, e.boss ? 3 : 2); break;
+        combo++; score += 25 * combo; hurtEnemy(e, (e.boss ? 3 : 2) + st.ball); break;
       }
     }
   }
@@ -301,7 +352,7 @@ function update() {
   if (state !== 'play') return;
 
   // player movement
-  const p = player, sp = 5;
+  const p = player, sp = 5 + 0.4 * st.spd;
   let dx = 0, dy = 0;
   if (keys.ArrowLeft || keys.KeyA || keys.Numpad4 || keys.Numpad7 || keys.Numpad1) dx -= 1;
   if (keys.ArrowRight || keys.KeyD || keys.Numpad6 || keys.Numpad9 || keys.Numpad3) dx += 1;
@@ -320,8 +371,8 @@ function update() {
   // shooting (auto-fire on touch)
   if (p.cd > 0) p.cd--;
   if ((keys.Space || keys.Numpad0 || touch) && p.cd <= 0) {
-    p.cd = p.weapon >= 3 ? 7 : 9;
-    const b = (ox, vx) => bullets.push({ x: p.x + ox, y: p.y - 18, vx, vy: -11, w: 4, h: 14 });
+    p.cd = Math.max(3, Math.round((p.weapon >= 3 ? 7 : 9) * Math.pow(0.9, st.rate)));
+    const b = (ox, vx) => bullets.push({ x: p.x + ox, y: p.y - 18, vx, vy: -11, w: 4, h: 14, d: dmgMul() });
     b(0, 0);
     if (p.weapon >= 2) { b(-10, -0.6); b(10, 0.6); }
     if (p.weapon >= 4) { b(-18, -1.6); b(18, 1.6); }
@@ -379,7 +430,7 @@ function update() {
   ebullets = ebullets.filter(b => !b.dead);
   // bullet vs enemy
   for (const b of bullets) for (const e of enemies) {
-    if (!e.dead && !b.dead && e.y > -10 && hitRect(b, e)) { b.dead = true; hurtEnemy(e, 1); }
+    if (!e.dead && !b.dead && e.y > -10 && hitRect(b, e)) { b.dead = true; hurtEnemy(e, b.d); }
   }
   bullets = bullets.filter(b => !b.dead);
   enemies = enemies.filter(e => !e.dead);
@@ -390,6 +441,7 @@ function update() {
   // powerups
   for (const u of powerups) {
     u.y += 1.5;
+    if (st.mag) { const dx = p.x - u.x, dy = p.y - u.y, d = Math.hypot(dx, dy); if (d < 50 + 45 * st.mag && d > 1) { u.x += dx / d * 3.5; u.y += dy / d * 3.5; } }
     if (hitRect(u, p)) {
       u.dead = true; sfx.power(); score += 200;
       if (u.kind === 'weapon') p.weapon = Math.min(4, p.weapon + 1);
@@ -406,6 +458,8 @@ function update() {
   particles = particles.filter(q => q.life > 0);
   if (p.inv < 100 && frame % 3 === 0) particles.push({ x: p.x + rand(-4, 4), y: p.y + 16, vx: rand(-0.3, 0.3), vy: rand(1.5, 3), life: 14, max: 14, col: '#4af' });
   if (shake > 0) shake--; if (flash > 0) flash--;
+  if (p.lvlFlash > 0) p.lvlFlash--;
+  if (p.pending > 0 && state === 'play') openUpgrade();
 }
 
 // ---------- Drawing ----------
@@ -422,8 +476,9 @@ function drawPlayer() {
   poly([[-5, 12], [0, 12 + f], [5, 12]], '#ff9a2e');
   poly([[-14, 8], [-14, 8 + f * 0.6], [-9, 8]], '#ff9a2e'); poly([[14, 8], [14, 8 + f * 0.6], [9, 8]], '#ff9a2e');
   // wings
-  poly([[-5, -4], [-22, 16], [-8, 12]], '#2a6df4', '#9cf');
-  poly([[5, -4], [22, 16], [8, 12]], '#2a6df4', '#9cf');
+  const wc = ['#2a6df4', '#2ac46a', '#e8a21c', '#e0442f', '#b04df0', '#e8f0ff'][Math.min(5, Math.floor((p.lvl - 1) / 3))];
+  poly([[-5, -4], [-22, 16], [-8, 12]], wc, '#9cf');
+  poly([[5, -4], [22, 16], [8, 12]], wc, '#9cf');
   // body
   poly([[0, -22], [8, 8], [5, 14], [-5, 14], [-8, 8]], '#dfe8ff', '#fff');
   poly([[0, -12], [3, -2], [-3, -2]], '#27d', null);
@@ -491,9 +546,14 @@ function draw() {
     // HUD
     text('SCORE ' + String(score).padStart(7, '0'), 10, 24, 16);
     text('HI ' + String(hi).padStart(7, '0'), W - 10, 24, 16, '#fd5', 'right');
-    text('LV ' + level, W / 2, 24, 16, '#8f8', 'center');
+    text('STAGE ' + level, W / 2, 24, 14, '#8f8', 'center');
+    // ship level + xp bar
+    text('SHIP LV ' + player.lvl, 10, 44, 12, '#8ef');
+    ctx.fillStyle = '#123'; ctx.fillRect(90, 35, 120, 7); ctx.fillStyle = '#4fa'; ctx.fillRect(90, 35, 120 * player.xp / player.xpNext, 7);
+    ctx.strokeStyle = '#8ab'; ctx.lineWidth = 1; ctx.strokeRect(90.5, 35.5, 120, 7);
+    if (player.lvlFlash > 0) text('LEVEL UP!', player.x, player.y - 40 - (90 - player.lvlFlash) * 0.3, 16, `rgba(150,255,150,${Math.min(1, player.lvlFlash / 30)})`, 'center');
     // energy bar
-    const ep = player.energy / 100;
+    const ep = player.energy / maxEnergy();
     ctx.fillStyle = '#012'; ctx.fillRect(10, H - 44, 100, 8);
     ctx.fillStyle = player.lock > 0 ? '#f44' : ep < 0.2 ? '#fa4' : '#4df'; ctx.fillRect(10, H - 44, 100 * ep, 8);
     ctx.strokeStyle = '#8ab'; ctx.lineWidth = 1; ctx.strokeRect(10.5, H - 43.5, 100, 8);
@@ -521,11 +581,32 @@ function draw() {
     text('P  pause     touch: drag to fly', W / 2, 508, 14, '#aaa', 'center');
     text('HI ' + hi, W / 2, 590, 16, '#fd5', 'center');
   } else if (state === 'pause') {
-    text('PAUSED', W / 2, H / 2, 40, '#fff', 'center');
+    text('PAUSED', W / 2, 200, 40, '#fff', 'center');
+    text('SHIP LEVEL ' + player.lvl, W / 2, 250, 18, '#8ef', 'center');
+    let row = 0;
+    for (const u of UPGRADES) if (!u.noLevel && st[u.id]) text(u.name + '  Lv ' + st[u.id], W / 2, 290 + 24 * row++, 15, '#cde', 'center');
+    if (!row) text('No upgrades yet', W / 2, 290, 15, '#789', 'center');
+  } else if (state === 'upgrade') {
+    ctx.fillStyle = 'rgba(0,0,10,0.75)'; ctx.fillRect(0, 0, W, H);
+    text('LEVEL UP!', W / 2, 90, 40, '#8f8', 'center');
+    text('Ship level ' + player.lvl + ' — choose an upgrade', W / 2, 125, 16, '#cde', 'center');
+    text('(press 1 / 2 / 3 or tap a card)', W / 2, 150, 13, '#789', 'center');
+    upChoices.forEach((u, i) => {
+      const y = CARD_Y + i * 120, ready = frame - upFrame >= 30;
+      ctx.globalAlpha = ready ? 1 : 0.5;
+      ctx.fillStyle = '#0b1830'; ctx.fillRect(40, y, W - 80, 106);
+      ctx.strokeStyle = '#4af'; ctx.lineWidth = 2; ctx.strokeRect(40, y, W - 80, 106);
+      text('[' + (i + 1) + ']', 58, y + 38, 22, '#fd5');
+      text(u.name, 110, y + 36, 22, '#fff');
+      text(u.desc, 110, y + 62, 13, '#9bd');
+      text(u.noLevel ? 'Instant' : 'Lv ' + st[u.id] + ' → ' + (st[u.id] + 1), 110, y + 88, 14, '#8f8');
+      ctx.globalAlpha = 1;
+    });
   } else if (state === 'over') {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
     text('GAME OVER', W / 2, 290, 44, '#f55', 'center');
     text('SCORE ' + score, W / 2, 340, 22, '#fff', 'center');
+    text('Reached ship level ' + player.lvl, W / 2, 400, 15, '#8ef', 'center');
     if (score >= hi && score > 0) text('NEW HIGH SCORE!', W / 2, 372, 18, '#fd5', 'center');
     text('PRESS ENTER / TAP TO RETRY', W / 2, 430, 16, Math.floor(Date.now() / 500) % 2 ? '#fff' : '#888', 'center');
   }
