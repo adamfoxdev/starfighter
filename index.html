@@ -358,6 +358,12 @@ function update() {
     if (hitRect(e, p) && !e.dead) { if (!e.boss) hurtEnemy(e, 99); hurtPlayer(); }
     if (e.y > H + 50) e.dead = true;
   }
+  // player bullets cancel enemy bullets on contact
+  for (const b of bullets) for (const eb of ebullets) {
+    if (!b.dead && !eb.dead && hitRect(b, { x: eb.x, y: eb.y, w: 12, h: 12 })) { b.dead = eb.dead = true; burst(eb.x, eb.y, 4, '#f9c', 1.8); score += 5; }
+  }
+  bullets = bullets.filter(b => !b.dead);
+  ebullets = ebullets.filter(b => !b.dead);
   // bullet vs enemy
   for (const b of bullets) for (const e of enemies) {
     if (!e.dead && !b.dead && e.y > -10 && hitRect(b, e)) { b.dead = true; hurtEnemy(e, 1); }
