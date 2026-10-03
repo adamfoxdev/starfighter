@@ -266,11 +266,14 @@ function spawnType(t) {
     case 'mine': enemies.push({ type: 'mine', x: rand(40, W - 40), y: -30, w: 26, h: 26, hp: 2, vy: 0.9, ph: Math.random() * 6, pts: 200, fire: 9999 }); break;
   }
 }
-const BOSS_NAMES = ['DREADNOUGHT', 'HELIX', 'HIVEMIND', 'BREAKER', 'PRISM', 'CARRIER', 'PHANTOM'];
+const BOSS_NAMES = ['DREADNOUGHT', 'HELIX', 'HIVEMIND', 'BREAKER', 'PRISM', 'CARRIER', 'PHANTOM', 'GRAVITON', 'HYDRA', 'CHRONOS', 'CRUSHER'];
+const BOSS_DIM = { 3: [150, 30], 5: [150, 60], 6: [90, 60], 7: [90, 90], 8: [140, 56], 9: [100, 80], 10: [400, 56] };
+const phist = [];
 function spawnBoss() {
-  const kind = (level - 1) % 7, hp = kind === 3 ? 80 + level * 25 : 60 + level * 20;
+  const kind = (level - 1) % 11, hp = kind === 3 ? 80 + level * 25 : kind === 10 ? 100 + level * 25 : 60 + level * 20;
+  phist.length = 0;
   hballs = [];
-  enemies.push({ type: 'boss', kind, sv: 90, sp: 0, t: 0, x: W / 2, y: -80, w: kind === 3 || kind === 5 ? 150 : kind === 6 ? 90 : 120, h: kind === 3 ? 30 : kind === 5 ? 60 : 70, hp, max: hp, vy: 1, ph: 0, pts: 5000, fire: 40, boss: true });
+  enemies.push({ type: 'boss', kind, sv: 90, sp: 0, t: 0, x: W / 2, y: -80, w: (BOSS_DIM[kind] || [120, 70])[0], h: (BOSS_DIM[kind] || [120, 70])[1], hp, max: hp, vy: 1, ph: 0, pts: 5000, fire: 40, boss: true });
   banner = { t: 150, l1: 'WARNING', l2: BOSS_NAMES[kind] };
 }
 function detonate(b) { // timed bomb bursts into a ring of bullets
@@ -292,7 +295,7 @@ function resetMech() {
   bumpers = [[110, 230], [370, 230], [240, 320], [150, 430], [330, 430]].map(([x, y]) => ({ x, y, r: 20, hit: 0 }));
   well = null; wind = { v: 0, target: 0, t: 200 }; pv = { x: 0, y: 0 }; cy = 0; windLines = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, len: 10 + Math.random() * 20 })); }
 function resetCarnage() { resetMech(); debris = []; booms = []; floats = []; later = []; streak = 0; streakT = 0; kfx = null; hitStop = 0; slowmo = 0; chainDepth = 0; }
-const ENEMY_COL = { mirror: '#a4c', drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
+const ENEMY_COL = { part: '#3a7', mirror: '#a4c', drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
 function carnage(e) {
   const big = e.boss ? 3 : e.w > 40 ? 2 : 1, col = ENEMY_COL[e.type] || '#ff8a3a';
   booms.push({ x: e.x, y: e.y, t: 0, max: e.boss ? 50 : 20 + big * 4, size: e.boss ? 120 : 24 + big * 14 });
@@ -358,9 +361,11 @@ function killEnemy(e) {
   carnage(e); streakReward();
   if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
   if (e.type === 'mirror') mirrorT = 480;
+  if (e.type === 'part' && e.parent && e.parent.kind === 10) e.parent.y = Math.max(80, e.parent.y - 60); // crusher recoils when a turret dies
   if (e.type === 'splitter' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'splitter', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: 2.2, vx: sx * 1.8, ph: 0, pts: 50, fire: 9999 });
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
+  if (e.boss) for (const o of enemies) if (o.type === 'part') o.dead = true;
   if (e.boss) { slowmo = 24; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
   if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name, l3: theme().hint }; }
   if (e.boss && mode === 'rush') { // boss rush: reward, recover and queue the next boss
@@ -378,7 +383,7 @@ function killEnemy(e) {
 }
 function hurtEnemy(e, d) {
   if (e.ghost) return; // phantom, mid-teleport
-  if (e.boss && e.kind === 3 && !e.exposed) { e.flash = 2; burst(e.x + rand(-40, 40), e.y + 12, 2, '#8cf', 1.5); return; } // armored
+  if (e.boss && (e.kind === 3 || e.kind === 8 || e.kind === 10) && !e.exposed) { e.flash = 2; burst(e.x + rand(-40, 40), e.y + 12, 2, '#8cf', 1.5); return; } // armored
   if (e.dead) return;
   if (e.shield > 0) { const ab = Math.min(e.shield, d); e.shield -= ab; e.shT = 150; e.flash = 2; burst(e.x, e.y, 3, '#8ef', 2.5); d -= ab; if (d <= 0) { sfx.hit(); return; } } // guardian shield
   e.hp -= d; e.flash = 4;
@@ -1022,6 +1027,12 @@ function update() {
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; if (mech() === 'wrap') b.x = wrapX(b.x); }
   bullets = bullets.filter(b => b.y > -20 && b.x > -10 && b.x < W + 10);
   if (!(buff.slow > 0 && frame % 2)) for (const b of ebullets) {
+    if (b.echo) { // trail of the player's recent path
+      if (b.wait > 0) { b.wait--; continue; }
+      b.i += 1.4; const idx = Math.floor(b.i);
+      if (idx >= b.path.length) { b.dead = true; b.x = -999; continue; }
+      b.x = b.path[idx].x; b.y = b.path[idx].y; continue;
+    }
     if (b.home) { // slow-turning homing orb
       const sp = Math.hypot(b.vx, b.vy) || 2, a = Math.atan2(b.vy, b.vx);
       let d = Math.atan2(p.y - b.y, p.x - b.x) - a; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -1043,6 +1054,25 @@ function update() {
     else if (e.type === 'wing') { e.y += e.vy; e.x = e.cx + Math.sin(e.ph * 1.5) * 90; }
     else if (e.type === 'tank') { e.y += e.vy; }
     else if (e.type === 'kamikaze') { e.y += e.vy; e.x += Math.sign(p.x - e.x) * Math.min(2.2, Math.abs(p.x - e.x)); }
+    else if (e.type === 'part') {
+      const par = e.parent;
+      if (!par || par.dead) e.dead = true;
+      else if (e.part === 'head') {
+        e.x = par.x + (e.idx - 1) * 80; e.y = par.y + 42 + Math.sin(e.ph + e.idx) * 8;
+        const alive = enemies.filter(o => o.type === 'part' && o.parent === par && !o.dead).length;
+        e.cd -= 1 + (3 - alive) * 0.35;
+        if (e.cd <= 0) {
+          const a = Math.atan2(p.y - e.y, p.x - e.x);
+          if (e.idx === 0) { for (const d2 of [-0.08, 0.08]) ebullets.push({ x: e.x, y: e.y + 10, vx: Math.cos(a + d2) * 3.6, vy: Math.sin(a + d2) * 3.6, w: 8, h: 8 }); }
+          else if (e.idx === 1) { for (let i = -2; i <= 2; i++) ebullets.push({ x: e.x, y: e.y + 10, vx: Math.cos(Math.PI / 2 + i * 0.3) * 3.1, vy: Math.sin(Math.PI / 2 + i * 0.3) * 3.1, w: 8, h: 8 }); }
+          else ebullets.push({ x: e.x, y: e.y + 10, vx: Math.cos(a) * 2.2, vy: Math.sin(a) * 2.2, w: 10, h: 10, home: true, life: 240 });
+          e.cd = [75, 95, 160][e.idx];
+        }
+      } else { // turret
+        e.x = par.x + e.idx * 130; e.y = par.y + 34;
+        if (--e.cd <= 0) { e.cd = par.exposed ? 70 : 110; const a = Math.atan2(p.y - e.y, p.x - e.x); for (const d2 of [-0.25, 0, 0.25]) ebullets.push({ x: e.x, y: e.y + 12, vx: Math.cos(a + d2) * 3.3, vy: Math.sin(a + d2) * 3.3, w: 8, h: 8 }); }
+      }
+    }
     else if (e.type === 'mirror') { // shadow: mirrors your position and fires while you do
       e.x += (W - p.x - e.x) * 0.12; e.y += (Math.max(70, Math.min(380, H - p.y)) - e.y) * 0.1;
       if (e.cd > 0) e.cd--;
@@ -1094,6 +1124,8 @@ function update() {
       if (e.y < 90) e.y += e.vy;
       else if (e.kind === 3) { const tgt = hballs.length ? hballs.reduce((a, b) => b.y < a.y ? b : a).x : p.x; e.x = Math.max(80, Math.min(W - 80, e.x + Math.max(-2.4, Math.min(2.4, tgt - e.x)))); }
       else if (e.kind === 6) { /* teleports instead of drifting */ }
+      else if (e.kind === 7) e.x = W / 2 + Math.sin(e.ph * 0.35) * 100;
+      else if (e.kind === 10) { e.x = W / 2; e.y += e.exposed ? 0.3 : 0.14; }
       else e.x = W / 2 + Math.sin(e.ph * (e.kind === 1 ? 0.3 : 0.7)) * (W / 2 - (e.kind === 1 ? 200 : 90));
     }
     if (e.type === 'boss' && e.y >= 90) {
@@ -1143,6 +1175,38 @@ function update() {
           for (const sx of [-1, 1]) ebullets.push({ x: e.x + sx * 30, y: e.y + 20, vx: sx * 1.5, vy: 1.5, w: 10, h: 10, home: true, life: 260 });
         }
         if (!e.ghost && (cyc === 130 || cyc === 190)) { const base = Math.atan2(p.y - e.y, p.x - e.x); for (const d of [-0.25, 0, 0.25]) ebullets.push({ x: e.x, y: e.y + 20, vx: Math.cos(base + d) * 3.4, vy: Math.sin(base + d) * 3.4, w: 8, h: 8 }); }
+      } else if (e.kind === 7) { // GRAVITON: pulls you in, sends gapped shockwave rings
+        const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1, f = (rage ? 1.5 : 1) * Math.min(1.6, 120 / d + 0.4);
+        p.x = Math.max(16, Math.min(W - 16, p.x + dx / d * f)); p.y = Math.max(40, Math.min(H - 30, p.y + dy / d * f));
+        for (const b of ebullets) if (!b.pulse && !b.echo && !b.bomb) { const bx = e.x - b.x, by = e.y - b.y, bd = Math.hypot(bx, by) || 1; if (bd < 300) { b.vx += bx / bd * 0.05; b.vy += by / bd * 0.05; } }
+        if (e.t % (rage ? 110 : 150) === 0) {
+          const gap = Math.atan2(p.y - e.y, p.x - e.x) + rand(-0.6, 0.6), n = 28;
+          for (let i = 0; i < n; i++) { const a = i * 6.283 / n; let da = Math.atan2(Math.sin(a - gap), Math.cos(a - gap)); if (Math.abs(da) < 0.3) continue; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.5, vy: Math.sin(a) * 2.5, w: 8, h: 8, pulse: true }); }
+          burst(e.x, e.y, 14, '#c8f', 4);
+        }
+        if (e.t % 90 === 45) { const a = Math.atan2(p.y - e.y, p.x - e.x); for (const d2 of [-0.12, 0.12]) ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a + d2) * 3.3, vy: Math.sin(a + d2) * 3.3, w: 8, h: 8 }); }
+      } else if (e.kind === 8) { // HYDRA: cut off the heads, then the body is exposed until they regrow
+        const spawnHeads = () => { for (let i = 0; i < 3; i++) enemies.push({ type: 'part', part: 'head', idx: i, parent: e, x: e.x + (i - 1) * 80, y: e.y + 45, w: 46, h: 40, hp: 14 + level * 4, mhp: 14 + level * 4, ph: i, cd: 40 + i * 25, pts: 800, fire: 9999 }); };
+        if (!e.init) { e.init = true; spawnHeads(); }
+        const heads = enemies.filter(o => o.type === 'part' && o.parent === e && !o.dead).length;
+        if (heads === 0 && !e.exposed) { e.exposed = true; e.exT = 380; banner = { t: 90, l1: 'HEADS DOWN', l2: 'HIT THE BODY!' }; sfx.power(); flash = 10; }
+        if (e.exposed && --e.exT <= 0) { e.exposed = false; spawnHeads(); banner = { t: 80, l1: 'THE HEADS REGROW', l2: '' }; }
+        if (e.exposed && e.t % 50 === 0) { const a = Math.atan2(p.y - e.y, p.x - e.x); for (const d2 of [-0.2, 0, 0.2]) ebullets.push({ x: e.x, y: e.y + 20, vx: Math.cos(a + d2) * 3.4, vy: Math.sin(a + d2) * 3.4, w: 8, h: 8 }); }
+      } else if (e.kind === 9) { // CHRONOS: echoes your recent path, rewinds its own wounds when enraged
+        phist.push({ x: p.x, y: p.y }); if (phist.length > 240) phist.shift();
+        if (e.t % (rage ? 140 : 200) === 0 && phist.length > 40) {
+          const path = phist.slice(-150);
+          for (let k = 0; k < 9; k++) ebullets.push({ echo: true, path, i: 0, wait: k * 5, x: path[0].x, y: path[0].y, vx: 0, vy: 0, w: 8, h: 8 });
+          banner = { t: 50, l1: 'ECHO', l2: '' }; sfx.shieldOn();
+        }
+        if (e.t % 100 === 50) { const a = Math.atan2(p.y - e.y, p.x - e.x); ebullets.push({ x: e.x, y: e.y + 20, vx: Math.cos(a) * 3, vy: Math.sin(a) * 3, w: 8, h: 8 }); }
+        if (rage && e.t % 300 === 0) { e.hp = Math.min(e.max, e.hp + e.max * 0.05); rings.push({ x: e.x, y: e.y, t: 0 }); floats.push({ x: e.x, y: e.y - 40, txt: 'REWIND +', t: 60, col: '#6ef', sz: 14 }); }
+      } else if (e.kind === 10) { // CRUSHER: a descending wall; break the turrets, then the slab itself
+        if (!e.init) { e.init = true; for (let i = -1; i <= 1; i++) enemies.push({ type: 'part', part: 'turret', idx: i, parent: e, x: e.x + i * 130, y: e.y + 34, w: 40, h: 28, hp: 20 + level * 6, mhp: 20 + level * 6, ph: i, cd: 70 + (i + 1) * 30, pts: 600, fire: 9999 }); }
+        if (!e.exposed && !enemies.some(o => o.type === 'part' && o.parent === e && !o.dead)) { e.exposed = true; banner = { t: 100, l1: 'TURRETS DOWN', l2: 'FINISH THE WALL!' }; sfx.power(); flash = 10; }
+        const minY = e.y + e.h / 2 + 18; if (p.y < minY) p.y = minY;
+        if (p.y > H - 30) { p.y = H - 30; hurtPlayer(); e.y = Math.max(80, e.y - 140); shake = 20; burst(p.x, p.y, 20, '#fa4', 5); }
+        if (e.t % 170 === 0 && enemies.length < 14) enemies.push({ type: 'mine', x: e.x + rand(-170, 170), y: e.y + 34, w: 26, h: 26, hp: 2, vy: 1.3, ph: Math.random() * 6, pts: 200, fire: 9999 });
       } else { // aimed bursts + drone summons
         if (e.t % (rage ? 55 : 80) === 0) {
           const base = Math.atan2(p.y - e.y, p.x - e.x);
@@ -1153,7 +1217,7 @@ function update() {
     } else if (e.type !== 'boss' && e.y > 0 && e.y < H - 200 && --e.fire <= 0) {
       e.fire = Math.max(25, rand(70, 190) - level * 6); enemyShoot(e, e.type === 'tank' || level > 2);
     }
-    if (!e.ghost && hitRect(e, p) && !e.dead) { if (!e.boss) hurtEnemy(e, 99); hurtPlayer(); }
+    if (!e.ghost && hitRect(e, p) && !e.dead) { if (!e.boss && e.type !== 'part') hurtEnemy(e, 99); hurtPlayer(); }
     if (e.y > H + 50) e.dead = true;
   }
   // player bullets cancel enemy bullets on contact
@@ -1169,7 +1233,7 @@ function update() {
   bullets = bullets.filter(b => !b.dead);
   enemies = enemies.filter(e => !e.dead);
   // enemy bullet vs player
-  for (const b of ebullets) if (hitRect(b, { x: p.x, y: p.y, w: 12, h: 16 })) { b.dead = true; hurtPlayer(); }
+  for (const b of ebullets) if (!(b.echo && b.wait > 0) && hitRect(b, { x: p.x, y: p.y, w: 12, h: 16 })) { b.dead = true; hurtPlayer(); } // echoes are harmless until they start moving
   ebullets = ebullets.filter(b => !b.dead);
 
   // powerups
@@ -1224,6 +1288,7 @@ function drawPlayer() {
   if (p.shield) { ctx.strokeStyle = `rgba(80,255,255,${0.5 + 0.3 * Math.sin(frame / 5)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, 26, 0, 6.283); ctx.stroke(); }
 }
 function drawEnemy(e) {
+  if (e.type === 'part' && e.part === 'head' && e.parent) { ctx.strokeStyle = '#2a6'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(e.parent.x, e.parent.y + 10); ctx.quadraticCurveTo((e.parent.x + e.x) / 2, e.parent.y + 40, e.x, e.y); ctx.stroke(); ctx.lineCap = 'butt'; }
   ctx.save(); ctx.translate(e.x, e.y); if (e.ghost && !e.boss) ctx.globalAlpha = 0.15;
   const hit = e.flash > 0;
   const c = (col) => hit ? '#fff' : col;
@@ -1231,6 +1296,16 @@ function drawEnemy(e) {
   else if (e.type === 'wing') { poly([[0, 12], [14, -6], [8, -12], [0, -6], [-8, -12], [-14, -6]], c('#b4f'), '#e9f'); }
   else if (e.type === 'tank') { poly([[0, 19], [22, 6], [22, -12], [10, -19], [-10, -19], [-22, -12], [-22, 6]], c('#4a6'), '#9f9'); ctx.fillStyle = '#143'; ctx.fillRect(-8, -8, 16, 14); ctx.fillStyle = '#f44'; ctx.fillRect(-3, -3, 6, 6); }
   else if (e.type === 'kamikaze') { poly([[0, 13], [11, -6], [0, -13], [-11, -6]], c('#fa0'), '#ff8'); }
+  else if (e.type === 'part') {
+    if (e.part === 'head') {
+      ctx.fillStyle = c('#3a7'); ctx.strokeStyle = '#9fc'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 20, 0, 6.283); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ff6'; ctx.beginPath(); ctx.arc(-7, -3, 4, 0, 6.283); ctx.arc(7, -3, 4, 0, 6.283); ctx.fill();
+      ctx.fillStyle = '#143'; ctx.fillRect(-8, 6, 16, 4);
+    } else {
+      ctx.fillStyle = c('#667'); ctx.strokeStyle = '#bbc'; ctx.lineWidth = 2; ctx.fillRect(-20, -14, 40, 28); ctx.strokeRect(-20, -14, 40, 28);
+      ctx.fillStyle = '#334'; ctx.fillRect(-4, 8, 8, 18); ctx.fillStyle = '#f44'; ctx.beginPath(); ctx.arc(0, -2, 5, 0, 6.283); ctx.fill();
+    }
+  }
   else if (e.type === 'mirror') { ctx.scale(1, -1); poly([[0, -22], [8, 8], [5, 14], [-5, 14], [-8, 8]], c('#6a2a8a'), '#e8f'); poly([[-5, -4], [-22, 16], [-8, 12]], '#a33', '#f9a'); poly([[5, -4], [22, 16], [8, 12]], '#a33', '#f9a'); }
   else if (e.type === 'splitter') {
     ctx.scale(e.w / 30, e.w / 30); poly([[0, 15], [14, 6], [14, -8], [0, -15], [-14, -8], [-14, 6]], c('#2bb5a0'), '#aff');
@@ -1267,7 +1342,7 @@ function drawEnemy(e) {
     ctx.fillStyle = '#123'; ctx.fillRect(-2, 6, 4, 12); ctx.fillStyle = e.burst > 0 ? '#fff' : '#f33'; ctx.beginPath(); ctx.arc(0, -3, 4, 0, 6.283); ctx.fill();
   }
   else if (e.type === 'boss') {
-    const pal = [['#823', '#f68', '#c46'], ['#316', '#c9f', '#74c'], ['#163', '#7f9', '#3a6'], ['#123a55', '#4df', '#2a8'], ['#2b1b55', '#fff', '#6ef'], ['#455', '#fa4', '#788'], ['#2a1030', '#f6f', '#715']][e.kind];
+    const pal = [['#823', '#f68', '#c46'], ['#316', '#c9f', '#74c'], ['#163', '#7f9', '#3a6'], ['#123a55', '#4df', '#2a8'], ['#2b1b55', '#fff', '#6ef'], ['#455', '#fa4', '#788'], ['#2a1030', '#f6f', '#715'], ['#102', '#a6f', '#415'], ['#143', '#6d8', '#2a6'], ['#223', '#6ef', '#357'], ['#433', '#fa4', '#655']][e.kind];
     if (e.kind <= 2) poly([[0, 35], [60, 0], [50, -30], [20, -35], [-20, -35], [-50, -30], [-60, 0]], c(pal[0]), pal[1]);
     if (e.kind <= 2) poly([[0, 22], [30, 0], [20, -22], [-20, -22], [-30, 0]], c(pal[2]), pal[1]);
     if (e.kind === 1) { ctx.fillStyle = '#e9f'; for (let i = 0; i < 4; i++) { const a = e.ph * 2 + i * Math.PI / 2; ctx.beginPath(); ctx.arc(Math.cos(a) * 26, -2 + Math.sin(a) * 26, 4, 0, 6.283); ctx.fill(); } }
@@ -1288,6 +1363,26 @@ function drawEnemy(e) {
       ctx.fillStyle = '#f3f'; ctx.fillRect(-17, -12, 11, 13); ctx.fillRect(6, -12, 11, 13);
       ctx.fillStyle = '#fff'; ctx.fillRect(-14, -9, 4, 6); ctx.fillRect(9, -9, 4, 6);
     }
+    if (e.kind === 7) { // graviton singularity
+      const g = ctx.createRadialGradient(0, 0, 20, 0, 0, 56); g.addColorStop(0, 'rgba(170,90,255,0.7)'); g.addColorStop(1, 'rgba(170,90,255,0)'); ctx.fillStyle = g; ctx.fillRect(-56, -56, 112, 112);
+      ctx.fillStyle = c('#000'); ctx.beginPath(); ctx.arc(0, 0, 32, 0, 6.283); ctx.fill();
+      for (let i = 0; i < 3; i++) { ctx.strokeStyle = `rgba(200,140,255,${0.8 - i * 0.2})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 38 + i * 6, e.ph * (2 + i) + i, e.ph * (2 + i) + i + 2.2); ctx.stroke(); }
+    }
+    if (e.kind === 8) { // hydra body
+      poly([[-70, -22], [70, -22], [62, 28], [-62, 28]], c(e.exposed ? '#a33' : pal[0]), e.exposed ? '#fd5' : pal[1]);
+      ctx.fillStyle = e.exposed ? (Math.floor(frame / 5) % 2 ? '#ff5' : '#f93') : '#2a6'; ctx.beginPath(); ctx.arc(0, 0, 11, 0, 6.283); ctx.fill();
+    }
+    if (e.kind === 9) { // chronos clock
+      ctx.fillStyle = c('#223'); ctx.strokeStyle = '#6ef'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 42, 0, 6.283); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 2; for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 34, Math.sin(a) * 34); ctx.lineTo(Math.cos(a) * 40, Math.sin(a) * 40); ctx.stroke(); }
+      ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(e.ph * 3) * 32, Math.sin(e.ph * 3) * 32); ctx.stroke();
+      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(e.ph * 0.4) * 20, Math.sin(e.ph * 0.4) * 20); ctx.stroke();
+    }
+    if (e.kind === 10) { // crusher slab
+      ctx.fillStyle = c(e.exposed ? '#722' : pal[0]); ctx.strokeStyle = e.exposed ? '#fd5' : pal[1]; ctx.lineWidth = 3; ctx.fillRect(-200, -28, 400, 56); ctx.strokeRect(-200, -28, 400, 56);
+      for (let x = -200; x < 200; x += 24) { ctx.fillStyle = ((x + 200) / 24) % 2 ? '#fc3' : '#222'; ctx.beginPath(); ctx.moveTo(x, 18); ctx.lineTo(x + 24, 18); ctx.lineTo(x + 12, 28); ctx.lineTo(x - 12, 28); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#887'; for (let x = -184; x <= 184; x += 46) { ctx.beginPath(); ctx.arc(x, -18, 3, 0, 6.283); ctx.fill(); }
+    }
     if (e.kind === 3) { // paddle
       poly([[-75, -14], [75, -14], [86, 0], [75, 14], [-75, 14], [-86, 0]], c(e.exposed ? '#a33' : pal[0]), e.exposed ? '#fd5' : pal[1]);
       ctx.fillStyle = e.exposed ? (Math.floor(frame / 5) % 2 ? '#ff5' : '#f93') : '#7cf'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, 6.283); ctx.fill();
@@ -1300,6 +1395,8 @@ function drawEnemy(e) {
   ctx.restore();
   if (e.type === 'guardian' && e.shield > 0) { ctx.strokeStyle = `rgba(110,230,255,${0.25 + 0.6 * e.shield / e.smax})`; ctx.lineWidth = 2 + (e.shT > 120 ? 2 : 0); ctx.beginPath(); ctx.arc(e.x, e.y, 27, 0, 6.283); ctx.stroke(); }
   if (e.volatile) { ctx.strokeStyle = `rgba(255,${140 + 60 * Math.sin(frame / 4)},0,0.85)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(e.w, e.h) / 2 + 5, 0, 6.283); ctx.stroke(); }
+  if (e.boss && e.kind === 8) text(e.exposed ? 'HEADS DOWN - HIT THE BODY!' : 'CUT OFF ALL THREE HEADS', W / 2, 62, 12, e.exposed ? '#fd5' : '#9cf', 'center');
+  if (e.boss && e.kind === 10) text(e.exposed ? 'TURRETS DOWN - FINISH THE WALL!' : 'DESTROY THE TURRETS - THE WALL IS CLOSING', W / 2, 62, 12, e.exposed ? '#fd5' : '#fb8', 'center');
   if (e.boss && e.kind === 3) text(e.exposed ? 'ARMOR DOWN - HIT IT!' : 'ARMORED: parry its balls with SHIELD [C]', W / 2, 62, 12, e.exposed ? '#fd5' : '#9cf', 'center');
   if (e.boss) { // health bar
     ctx.fillStyle = '#300'; ctx.fillRect(60, 12, W - 120, 8);
@@ -1378,7 +1475,7 @@ function draw() {
       ctx.lineTo(b.x2, b.y2); ctx.stroke();
     }
     ctx.fillStyle = '#9ff'; for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 14);
-    for (const b of ebullets) { ctx.fillStyle = b.bomb ? (b.fuse % 10 < 4 ? '#fff' : '#fa3') : b.home ? '#c6f' : '#f6a'; ctx.beginPath(); ctx.arc(b.x, b.y, b.bomb ? 7 : b.home ? 6 : 4, 0, 6.283); ctx.fill(); if (b.home) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); } }
+    for (const b of ebullets) { ctx.fillStyle = b.bomb ? (b.fuse % 10 < 4 ? '#fff' : '#fa3') : b.echo ? '#6ef' : b.home ? '#c6f' : '#f6a'; ctx.beginPath(); ctx.arc(b.x, b.y, b.bomb ? 7 : b.home ? 6 : 4, 0, 6.283); ctx.fill(); if (b.home) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); } }
     if (state !== 'over') drawPlayer();
     drawBuffs();
     drawCarnage();
