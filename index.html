@@ -99,7 +99,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let ballFx, fxMax, bolts, rings, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, rings, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
@@ -108,7 +108,7 @@ for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random()
 function start() {
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 250, pending: 0, lvlFlash: 0 };
   st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
-  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = [];
+  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; chaos = null; chaosT = 600;
   ballFx = newFx(); fxMax = newFx(); bolts = []; rings = []; beamT = 200; bombing = false;
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
@@ -182,7 +182,7 @@ const THEMES = [
     spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1]] },
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
-stage = 1; banner = { t: 0 }; beams = [];
+stage = 1; banner = { t: 0 }; beams = []; chaos = null; chaosT = 600;
 ballFx = newFx(); fxMax = newFx(); bolts = []; rings = [];
 blobs = [];
 for (let i = 0; i < 5; i++) blobs.push({ x: Math.random() * W, y: Math.random() * H, r: rand0(90, 200), z: 0.3 + Math.random() * 0.7 });
@@ -195,9 +195,15 @@ function pickType() {
   return tbl[0][0];
 }
 function spawn() {
+  const n0 = enemies.length;
+  spawnType(pickType());
+  const vp = Math.min(0.3, 0.1 + 0.03 * stage); // volatile enemies burst into bullets when killed
+  for (let i = n0; i < enemies.length; i++) if (Math.random() < vp && enemies[i].type !== 'asteroid' && enemies[i].type !== 'mine') enemies[i].volatile = true;
+}
+function spawnType(t) {
   const hpScale = 1 + Math.floor((level - 1) / 3);
   const drone = (x, y, vy, ph) => enemies.push({ type: 'drone', x, y, w: 26, h: 26, hp: 1 * hpScale, vy, ph, pts: 100, fire: rand(60, 200) });
-  switch (pickType()) {
+  switch (t) {
     case 'drone': drone(rand(30, W - 30), -30, rand(1.2, 2) + level * 0.08, Math.random() * 6); break;
     case 'line': for (let i = 0; i < 6; i++) drone(65 + i * 70, -30, 1.6, 0); break;
     case 'wing': { // zigzag wave of 3
@@ -233,11 +239,12 @@ function enemyShoot(e, aimed) {
 function killEnemy(e) {
   burst(e.x, e.y, e.boss ? 80 : 18, e.boss ? '#ffd24a' : '#ff8a3a', e.boss ? 6 : 3.5);
   sfx.boom(); score += e.pts; addXp(Math.round(e.pts / 10));
+  if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
   if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
   if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: i === 1 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
-  else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: [ 'weapon', 'shield', 'bomb', 'life', ballDrop(), ballDrop()][Math.floor(Math.random() * 6)], w: 18, h: 18 });
+  else if (Math.random() < 0.18) powerups.push({ x: e.x, y: e.y, kind: [ 'weapon', 'shield', 'bomb', 'life', ballDrop(), ballDrop()][Math.floor(Math.random() * 6)], w: 18, h: 18 });
 }
 function hurtEnemy(e, d) {
   e.hp -= d; e.flash = 4;
@@ -269,6 +276,30 @@ function explode(x, y) {
   burst(x, y, 22, '#ffb347', 4.5); sfx.boom(); shake = Math.max(shake, 4);
   for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - x, e.y - y) < 55 + 5 * st.msl) hurtEnemy(e, 3 + st.msl);
   for (const b of bricks) if (!b.dead && Math.hypot(b.x - x, b.y - y) < 55 + 5 * st.msl) hurtBrick(b, 2);
+}
+// ---------- Chaos events ----------
+const CHAOS = [
+  { id: 'meteor', name: 'METEOR SHOWER', dur: 300 }, { id: 'rain', name: 'POWER-UP RAIN', dur: 180 },
+  { id: 'rush', name: 'SWARM RUSH', dur: 240 }, { id: 'cross', name: 'CROSSFIRE', dur: 360 },
+  { id: 'mines', name: 'MINEFIELD', dur: 1 }, { id: 'frenzy', name: 'BALL FRENZY', dur: 1 },
+];
+function startChaos(c = CHAOS[Math.floor(Math.random() * CHAOS.length)]) {
+  chaos = { ...c, t: c.dur }; banner = { t: 110, l1: 'CHAOS!', l2: c.name }; sfx.bomb();
+  if (c.id === 'mines') for (let i = 0; i < 10; i++) enemies.push({ type: 'mine', x: 35 + i * 46 + rand(-8, 8), y: -30 - rand(0, 160), w: 26, h: 26, hp: 2, vy: 1.1, ph: Math.random() * 6, pts: 200, fire: 9999 });
+  if (c.id === 'frenzy') {
+    grantFx('multi'); grantFx('multi');
+    for (const k of ['fire', 'chain', 'split', 'blast', 'home', 'mega'].sort(() => Math.random() - 0.5).slice(0, 3)) { ballFx[k] = fxMax[k] = 420; }
+  }
+}
+function updateChaos() {
+  if (enemies.some(e => e.boss)) { chaos = null; return; }
+  if (!chaos) { if (--chaosT <= 0) startChaos(); return; }
+  const c = chaos, f = c.dur - c.t;
+  if (c.id === 'meteor' && f % 8 === 0) { const big = Math.random() < 0.4; enemies.push({ type: 'asteroid', size: big ? 2 : 1, x: rand(20, W - 20), y: -40, w: big ? 38 : 18, h: big ? 38 : 18, hp: big ? 3 : 1, vy: rand(3, 5), vx: rand(-1.5, 1.5), rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 8 }, () => rand(0.7, 1)), pts: big ? 80 : 30, fire: 9999 }); }
+  if (c.id === 'rain' && f % 22 === 0) powerups.push({ x: rand(30, W - 30), y: -10, kind: Math.random() < 0.85 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : ['weapon', 'shield', 'bomb', 'life'][Math.floor(Math.random() * 4)], w: 18, h: 18 });
+  if (c.id === 'rush' && f % 60 === 0) spawnType(f % 120 === 0 ? 'swarm' : 'line');
+  if (c.id === 'cross' && f % 18 === 0) { const L = Math.random() < 0.5; ebullets.push({ x: L ? -10 : W + 10, y: rand(80, H - 220), vx: (L ? 1 : -1) * rand(2.8, 4), vy: rand(-0.3, 0.3), w: 8, h: 8 }); }
+  if (--c.t <= 0) { chaos = null; chaosT = rand(700, 1000); }
 }
 function updateBeams() {
   const p = player;
@@ -328,7 +359,7 @@ const SPECIALS = ['fire', 'multi', 'mega', 'chain', 'home', 'pulse', 'catch', 's
 const mains = () => balls.filter(b => !b.mini).length;
 const FX = { fire: ['FIRE', '#ff6a1f'], mega: ['MEGA', '#c86bff'], chain: ['ARC', '#ffe94a'], home: ['SEEK', '#4cd2ff'], pulse: ['PULSE', '#ff8ccf'], catch: ['HOLD', '#e8e8e8'], split: ['SPLIT', '#b0ff4a'], blast: ['BLAST', '#ff4a4a'], orbit: ['ORBIT', '#8a9bff'] };
 const fxDur = () => 600 + 120 * st.ball;
-const ballDrop = () => Math.random() < 0.6 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : 'ball';
+const ballDrop = () => Math.random() < 0.8 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : 'ball';
 function grantFx(kind) {
   if (!balls.length) launchBall();
   if (kind === 'multi') {
@@ -389,7 +420,7 @@ function hurtBrick(b, d) {
   b.hp -= d; b.flash = 3;
   if (b.hp <= 0) {
     b.dead = true; burst(b.x, b.y, 8, b.col, 3); addXp(4);
-    if (Math.random() < 0.16) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', ballDrop(), ballDrop()][Math.floor(Math.random() * 4)], w: 18, h: 18 });
+    if (Math.random() < 0.28) powerups.push({ x: b.x, y: b.y, kind: ['weapon', 'shield', ballDrop(), ballDrop()][Math.floor(Math.random() * 4)], w: 18, h: 18 });
   }
 }
 function updateBricks() {
@@ -548,7 +579,8 @@ function update() {
   const bossAlive = enemies.some(e => e.boss);
   if (!bossAlive) {
     if (--spawnT <= 0) {
-      spawn(); spawnT = Math.max(18, 65 - level * 5);
+      spawn(); if (Math.random() < 0.25) spawn();
+      spawnT = Math.max(12, 48 - level * 4);
     }
     if (!bricks.length && waveDone !== level && waveDone !== -level && score >= level * 4000 - 2500) { spawnBricks(); waveDone = -level; }
     if (score >= level * 4000 && !bossAlive) { spawnBoss(); level++; spawnT = 180; }
@@ -558,6 +590,7 @@ function update() {
   updateSecondary();
   updateBricks();
   updateBeams();
+  updateChaos();
   if (banner.t > 0) banner.t--;
 
   // bullets
@@ -609,7 +642,7 @@ function update() {
         if (e.t % (rage ? 170 : 240) === 0 && enemies.length < 12) for (const sx of [-1, 1]) enemies.push({ type: 'drone', x: e.x + sx * 70, y: e.y + 20, w: 26, h: 26, hp: 1, vy: 1.8, ph: Math.random() * 6, pts: 100, fire: rand(60, 200) });
       }
     } else if (e.type !== 'boss' && e.y > 0 && e.y < H - 200 && --e.fire <= 0) {
-      e.fire = rand(90, 220) - level * 6; enemyShoot(e, e.type === 'tank' || level > 2);
+      e.fire = Math.max(25, rand(70, 190) - level * 6); enemyShoot(e, e.type === 'tank' || level > 2);
     }
     if (hitRect(e, p) && !e.dead) { if (!e.boss) hurtEnemy(e, 99); hurtPlayer(); }
     if (e.y > H + 50) e.dead = true;
@@ -714,6 +747,7 @@ function drawEnemy(e) {
     ctx.fillStyle = '#f33'; ctx.fillRect(-48, -4, 10, 14); ctx.fillRect(38, -4, 10, 14);
   }
   ctx.restore();
+  if (e.volatile) { ctx.strokeStyle = `rgba(255,${140 + 60 * Math.sin(frame / 4)},0,0.85)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(e.w, e.h) / 2 + 5, 0, 6.283); ctx.stroke(); }
   if (e.boss) { // health bar
     ctx.fillStyle = '#300'; ctx.fillRect(60, 12, W - 120, 8);
     ctx.fillStyle = '#f44'; ctx.fillRect(60, 12, (W - 120) * Math.max(0, e.hp / e.max), 8);
@@ -798,7 +832,7 @@ function draw() {
     if (banner.t > 0) {
       const warn = banner.l1 === 'WARNING';
       ctx.globalAlpha = Math.min(1, banner.t / 40);
-      text(banner.l1, W / 2, 300, 22, warn ? '#f55' : '#8ef', 'center');
+      text(banner.l1, W / 2, 300, 22, warn ? '#f55' : banner.l1 === 'CHAOS!' ? '#f90' : '#8ef', 'center');
       text(banner.l2, W / 2, 338, 34, warn ? '#fd5' : '#fff', 'center');
       ctx.globalAlpha = 1;
     }
