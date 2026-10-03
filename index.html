@@ -184,15 +184,15 @@ function hitRect(a, b) { return Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.ab
 // ---------- Stage themes ----------
 const THEMES = [
   { name: 'DEEP SPACE', bg: ['#02020a', '#050522'], blob: '90,110,255', star: '#fff',
-    spawn: [['drone', 5], ['wing', 3], ['tank', 1.5], ['kamikaze', 0.5], ['line', 0.6]] },
+    spawn: [['drone', 5], ['wing', 3], ['tank', 1.5], ['kamikaze', 0.5], ['line', 0.6], ['splitter', 1.5], ['strafer', 1]] },
   { name: 'ASTEROID BELT', bg: ['#0a0503', '#1d1109'], blob: '200,130,70', star: '#fdb',
-    spawn: [['asteroid', 5], ['drone', 2], ['kamikaze', 1.5], ['tank', 1], ['line', 0.5]] },
+    spawn: [['asteroid', 5], ['drone', 2], ['kamikaze', 1.5], ['tank', 1], ['line', 0.5], ['bomber', 1.5], ['cloaker', 1], ['splitter', 1]] },
   { name: 'CRIMSON NEBULA', bg: ['#12020d', '#2b0719'], blob: '255,60,140', star: '#fcd',
-    spawn: [['wing', 3], ['sniper', 2.5], ['swarm', 2], ['drone', 2], ['mine', 0.6]] },
+    spawn: [['wing', 3], ['sniper', 2.5], ['swarm', 2], ['drone', 2], ['mine', 0.6], ['spiral', 2], ['cloaker', 1.5], ['medic', 1]] },
   { name: 'IRON FORTRESS', bg: ['#03070b', '#0e1a25'], blob: '120,160,190', star: '#cde',
-    spawn: [['tank', 3], ['mine', 2.5], ['sniper', 2], ['drone', 1.5], ['line', 1]] },
+    spawn: [['tank', 3], ['mine', 2.5], ['sniper', 2], ['drone', 1.5], ['line', 1], ['guardian', 3], ['medic', 1.5], ['bomber', 1.5]] },
   { name: 'ION STORM', bg: ['#00100f', '#02302d'], blob: '60,255,220', star: '#bff',
-    spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1]] },
+    spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1], ['strafer', 2.5], ['spiral', 1.5], ['guardian', 1], ['splitter', 1]] },
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
 stage = 1; banner = { t: 0 }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
@@ -212,6 +212,7 @@ function spawn() {
   spawnType(pickType());
   const vp = Math.min(0.3, 0.1 + 0.03 * stage); // volatile enemies burst into bullets when killed
   for (let i = n0; i < enemies.length; i++) if (Math.random() < vp && enemies[i].type !== 'asteroid' && enemies[i].type !== 'mine') enemies[i].volatile = true;
+  for (let i = n0; i < enemies.length; i++) enemies[i].mhp = enemies[i].hp; // for medics
 }
 function spawnType(t) {
   const hpScale = 1 + Math.floor((level - 1) / 3);
@@ -233,6 +234,13 @@ function spawnType(t) {
       for (let i = 0; i < 5; i++) { const k = Math.ceil(i / 2) * (i % 2 ? 1 : -1); enemies.push({ type: 'dart', x: x0 + k * 30, y: -30 - Math.abs(k) * 26, w: 16, h: 20, hp: 1, vy: 4.2, ph: 0, pts: 60, fire: 9999 }); }
       break;
     }
+    case 'splitter': enemies.push({ type: 'splitter', size: 2, x: rand(40, W - 40), y: -30, w: 30, h: 30, hp: 3 * hpScale, vy: 1.3, vx: 0, ph: Math.random() * 6, pts: 180, fire: rand(80, 200) }); break;
+    case 'guardian': enemies.push({ type: 'guardian', x: rand(50, W - 50), y: -40, w: 40, h: 36, hp: 4 * hpScale, shield: 4, smax: 4, shT: 0, vy: 0.9, ph: 0, pts: 300, fire: 70 }); break;
+    case 'strafer': { const L = Math.random() < 0.5; enemies.push({ type: 'strafer', x: L ? -30 : W + 30, y: rand(90, 260), w: 32, h: 18, hp: 2 * hpScale, vx: (L ? 1 : -1) * (3 + level * 0.1), vy: 0.15, cd: 25, ph: 0, pts: 200, fire: 9999 }); break; }
+    case 'bomber': { const L = Math.random() < 0.5; enemies.push({ type: 'bomber', x: L ? -40 : W + 40, y: rand(45, 85), w: 44, h: 22, hp: 3 * hpScale, vx: (L ? 1 : -1) * 2.2, vy: 0, cd: 30, ph: 0, pts: 280, fire: 9999 }); break; }
+    case 'medic': enemies.push({ type: 'medic', x: rand(50, W - 50), y: -30, w: 28, h: 28, hp: 3 * hpScale, vy: 0.8, ph: 0, cd: 70, pts: 250, fire: 9999 }); break;
+    case 'cloaker': enemies.push({ type: 'cloaker', x: rand(40, W - 40), y: -30, w: 26, h: 26, hp: 2 * hpScale, vy: 1.5, ph: Math.random() * 6, life: 0, pts: 220, fire: rand(60, 140) }); break;
+    case 'spiral': enemies.push({ type: 'spiral', x: W / 2, cx: rand(110, W - 110), y: -30, w: 26, h: 26, hp: 2 * hpScale, vy: 0.9, ph: Math.random() * 6, cd: 90, pts: 230, fire: 9999 }); break;
     case 'mine': enemies.push({ type: 'mine', x: rand(40, W - 40), y: -30, w: 26, h: 26, hp: 2, vy: 0.9, ph: Math.random() * 6, pts: 200, fire: 9999 }); break;
   }
 }
@@ -242,6 +250,11 @@ function spawnBoss() {
   hballs = [];
   enemies.push({ type: 'boss', kind, sv: 90, sp: 0, t: 0, x: W / 2, y: -80, w: kind === 3 || kind === 5 ? 150 : kind === 6 ? 90 : 120, h: kind === 3 ? 30 : kind === 5 ? 60 : 70, hp, max: hp, vy: 1, ph: 0, pts: 5000, fire: 40, boss: true });
   banner = { t: 150, l1: 'WARNING', l2: BOSS_NAMES[kind] };
+}
+function detonate(b) { // timed bomb bursts into a ring of bullets
+  b.dead = true; burst(b.x, b.y, 12, '#fa3', 4); sfx.boom();
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.3; ebullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
+  b.x = -999;
 }
 function enemyShoot(e, aimed) {
   let a = Math.PI / 2;
@@ -317,6 +330,7 @@ function killEnemy(e) {
   if (floats.length < 50) floats.push({ x: e.x, y: e.y - 8, txt: '+' + gain, t: 45, col: '#fd5', sz: e.boss ? 22 : 13 });
   carnage(e); streakReward();
   if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
+  if (e.type === 'splitter' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'splitter', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: 2.2, vx: sx * 1.8, ph: 0, pts: 50, fire: 9999 });
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
   if (e.boss) { slowmo = 24; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
@@ -338,6 +352,7 @@ function hurtEnemy(e, d) {
   if (e.ghost) return; // phantom, mid-teleport
   if (e.boss && e.kind === 3 && !e.exposed) { e.flash = 2; burst(e.x + rand(-40, 40), e.y + 12, 2, '#8cf', 1.5); return; } // armored
   if (e.dead) return;
+  if (e.shield > 0) { const ab = Math.min(e.shield, d); e.shield -= ab; e.shT = 150; e.flash = 2; burst(e.x, e.y, 3, '#8ef', 2.5); d -= ab; if (d <= 0) { sfx.hit(); return; } } // guardian shield
   e.hp -= d; e.flash = 4;
   if (d >= 1 && floats.length < 50) floats.push({ x: e.x + rand(-10, 10), y: e.y - 12, txt: String(Math.round(d)), t: 28, col: '#fff', sz: 11 });
   if (d >= 0.5) burst(e.x, e.y, 2, '#fff', 2.5);
@@ -792,6 +807,7 @@ function update() {
       const na = a + Math.max(-0.035, Math.min(0.035, d)); b.vx = Math.cos(na) * Math.max(2.2, sp); b.vy = Math.sin(na) * Math.max(2.2, sp);
       if (--b.life <= 0) b.home = false;
     }
+    if (b.bomb && !b.dead && --b.fuse <= 0) { detonate(b); continue; }
     b.x += b.vx; b.y += b.vy;
   }
   ebullets = ebullets.filter(b => b.y < H + 20 && b.y > -20 && b.x > -20 && b.x < W + 20);
@@ -804,6 +820,36 @@ function update() {
     else if (e.type === 'wing') { e.y += e.vy; e.x = e.cx + Math.sin(e.ph * 1.5) * 90; }
     else if (e.type === 'tank') { e.y += e.vy; }
     else if (e.type === 'kamikaze') { e.y += e.vy; e.x += Math.sign(p.x - e.x) * Math.min(2.2, Math.abs(p.x - e.x)); }
+    else if (e.type === 'splitter') { e.y += e.vy; e.x += e.size === 2 ? Math.sin(e.ph) * 1.2 : e.vx; if (e.x < 15 || e.x > W - 15) e.vx *= -1; }
+    else if (e.type === 'guardian') {
+      e.y += e.vy; e.x += Math.sin(e.ph * 0.7) * 0.6;
+      if (e.shT > 0) e.shT--; else if (e.shield < e.smax && frame % 30 === 0) e.shield++;
+    }
+    else if (e.type === 'strafer') {
+      e.x += e.vx; e.y += e.vy;
+      if (e.x > 10 && e.x < W - 10 && --e.cd <= 0) { e.cd = 24; ebullets.push({ x: e.x, y: e.y + 8, vx: 0, vy: 3.6, w: 8, h: 8 }); }
+      if ((e.vx > 0 && e.x > W + 50) || (e.vx < 0 && e.x < -50)) e.dead = true;
+    }
+    else if (e.type === 'bomber') {
+      e.x += e.vx; e.y += Math.sin(e.ph * 2) * 0.3;
+      if (e.x > 20 && e.x < W - 20 && --e.cd <= 0) { e.cd = 55; ebullets.push({ x: e.x, y: e.y + 12, vx: 0, vy: 2.2, w: 12, h: 12, bomb: true, fuse: 50 }); }
+      if ((e.vx > 0 && e.x > W + 60) || (e.vx < 0 && e.x < -60)) e.dead = true;
+    }
+    else if (e.type === 'medic') {
+      e.y += e.vy; e.x += Math.sin(e.ph) * 0.8;
+      if (--e.cd <= 0) {
+        e.cd = 70;
+        for (const o of enemies) if (o !== e && !o.dead && !o.boss && o.mhp && o.hp < o.mhp && Math.hypot(o.x - e.x, o.y - e.y) < 110) {
+          o.hp = Math.min(o.mhp, o.hp + 1); bolts.push({ x1: e.x, y1: e.y, x2: o.x, y2: o.y, t: 10, green: true });
+          if (floats.length < 50) floats.push({ x: o.x, y: o.y - 14, txt: '+', t: 25, col: '#6f9', sz: 14 });
+        }
+      }
+    }
+    else if (e.type === 'cloaker') { e.life++; e.ghost = e.life % 140 > 80; e.y += e.vy; e.x += Math.sin(e.ph * 1.3) * 1.4; }
+    else if (e.type === 'spiral') {
+      e.y += e.vy; e.x = Math.max(20, Math.min(W - 20, e.cx + Math.cos(e.ph * 1.4) * 70));
+      if (e.y > 0 && --e.cd <= 0) { e.cd = 110; for (let i = 0; i < 4; i++) { const a = e.ph + i * Math.PI / 2; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); } }
+    }
     else if (e.type === 'asteroid') { e.y += e.vy; e.x += e.vx; e.rot += e.vr; if (e.x < 20 || e.x > W - 20) e.vx *= -1; }
     else if (e.type === 'dart') { e.y += e.vy; e.x += Math.max(-0.9, Math.min(0.9, p.x - e.x)); }
     else if (e.type === 'mine') { e.y += e.vy; e.x += Math.sin(e.ph * 0.8) * 0.6; }
@@ -884,13 +930,13 @@ function update() {
   }
   // player bullets cancel enemy bullets on contact
   for (const b of bullets) for (const eb of ebullets) {
-    if (!b.dead && !eb.dead && hitRect(b, { x: eb.x, y: eb.y, w: 12, h: 12 })) { b.dead = eb.dead = true; burst(eb.x, eb.y, 4, '#f9c', 1.8); score += 5; }
+    if (!b.dead && !eb.dead && hitRect(b, { x: eb.x, y: eb.y, w: 12, h: 12 })) { b.dead = true; if (eb.bomb) detonate(eb); else eb.dead = true; burst(eb.x, eb.y, 4, '#f9c', 1.8); score += 5; }
   }
   bullets = bullets.filter(b => !b.dead);
   ebullets = ebullets.filter(b => !b.dead);
   // bullet vs enemy
   for (const b of bullets) for (const e of enemies) {
-    if (!e.dead && !b.dead && e.y > -10 && hitRect(b, e)) { if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); } else b.dead = true; hurtEnemy(e, b.d); }
+    if (!e.dead && !e.ghost && !b.dead && e.y > -10 && hitRect(b, e)) { if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); } else b.dead = true; hurtEnemy(e, b.d); }
   }
   bullets = bullets.filter(b => !b.dead);
   enemies = enemies.filter(e => !e.dead);
@@ -950,13 +996,30 @@ function drawPlayer() {
   if (p.shield) { ctx.strokeStyle = `rgba(80,255,255,${0.5 + 0.3 * Math.sin(frame / 5)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, 26, 0, 6.283); ctx.stroke(); }
 }
 function drawEnemy(e) {
-  ctx.save(); ctx.translate(e.x, e.y);
+  ctx.save(); ctx.translate(e.x, e.y); if (e.ghost && !e.boss) ctx.globalAlpha = 0.15;
   const hit = e.flash > 0;
   const c = (col) => hit ? '#fff' : col;
   if (e.type === 'drone') { poly([[0, 13], [13, -8], [6, -13], [-6, -13], [-13, -8]], c('#e33'), '#fa8'); ctx.fillStyle = '#ff0'; ctx.fillRect(-3, -4, 6, 6); }
   else if (e.type === 'wing') { poly([[0, 12], [14, -6], [8, -12], [0, -6], [-8, -12], [-14, -6]], c('#b4f'), '#e9f'); }
   else if (e.type === 'tank') { poly([[0, 19], [22, 6], [22, -12], [10, -19], [-10, -19], [-22, -12], [-22, 6]], c('#4a6'), '#9f9'); ctx.fillStyle = '#143'; ctx.fillRect(-8, -8, 16, 14); ctx.fillStyle = '#f44'; ctx.fillRect(-3, -3, 6, 6); }
   else if (e.type === 'kamikaze') { poly([[0, 13], [11, -6], [0, -13], [-11, -6]], c('#fa0'), '#ff8'); }
+  else if (e.type === 'splitter') {
+    ctx.scale(e.w / 30, e.w / 30); poly([[0, 15], [14, 6], [14, -8], [0, -15], [-14, -8], [-14, 6]], c('#2bb5a0'), '#aff');
+    ctx.strokeStyle = '#0a5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(0, 15); ctx.stroke();
+  }
+  else if (e.type === 'guardian') { poly([[0, 18], [16, 10], [20, -4], [10, -18], [-10, -18], [-20, -4], [-16, 10]], c('#4a78b8'), '#9cf'); ctx.fillStyle = '#123'; ctx.fillRect(-7, -6, 14, 12); ctx.fillStyle = '#6ef'; ctx.fillRect(-3, -2, 6, 6); }
+  else if (e.type === 'strafer') { poly([[e.vx > 0 ? 18 : -18, 0], [8, -9], [-8, -9], [-16, 0], [-8, 9], [8, 9]], c('#f2b730'), '#ffe'); ctx.fillStyle = '#a40'; ctx.fillRect(-4, -3, 8, 6); }
+  else if (e.type === 'bomber') {
+    poly([[-22, -4], [-10, -11], [10, -11], [22, -4], [14, 10], [-14, 10]], c('#a33'), '#f88');
+    ctx.fillStyle = '#222'; ctx.fillRect(-8, 2, 16, 8); ctx.fillStyle = '#fd3'; ctx.fillRect(-16, -6, 6, 3); ctx.fillRect(10, -6, 6, 3);
+  }
+  else if (e.type === 'medic') { ctx.fillStyle = c('#d8f5e4'); ctx.beginPath(); ctx.arc(0, 0, 13, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#6c9'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#2c6'; ctx.fillRect(-3, -9, 6, 18); ctx.fillRect(-9, -3, 18, 6); }
+  else if (e.type === 'cloaker') { poly([[0, 14], [11, 0], [0, -14], [-11, 0]], c('#6fa8ff'), '#cde'); ctx.fillStyle = '#fff'; ctx.fillRect(-5, -3, 3, 5); ctx.fillRect(2, -3, 3, 5); }
+  else if (e.type === 'spiral') {
+    ctx.rotate(e.ph * 2); ctx.strokeStyle = c('#f5a'); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 10, 0, 6.283); ctx.stroke();
+    for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.fillStyle = '#fbd'; ctx.fillRect(9, -2, 6, 4); }
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, 6.283); ctx.fill();
+  }
   else if (e.type === 'asteroid') {
     ctx.rotate(e.rot); const R = e.w / 2, n = e.shape.length; ctx.beginPath();
     e.shape.forEach((k, i) => { const a = i / n * 6.283; ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * R * k, Math.sin(a) * R * k); });
@@ -1006,6 +1069,7 @@ function drawEnemy(e) {
     ctx.fillStyle = '#f33'; ctx.fillRect(-48, -4, 10, 14); ctx.fillRect(38, -4, 10, 14);
   }
   ctx.restore();
+  if (e.type === 'guardian' && e.shield > 0) { ctx.strokeStyle = `rgba(110,230,255,${0.25 + 0.6 * e.shield / e.smax})`; ctx.lineWidth = 2 + (e.shT > 120 ? 2 : 0); ctx.beginPath(); ctx.arc(e.x, e.y, 27, 0, 6.283); ctx.stroke(); }
   if (e.volatile) { ctx.strokeStyle = `rgba(255,${140 + 60 * Math.sin(frame / 4)},0,0.85)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(e.w, e.h) / 2 + 5, 0, 6.283); ctx.stroke(); }
   if (e.boss && e.kind === 3) text(e.exposed ? 'ARMOR DOWN - HIT IT!' : 'ARMORED: parry its balls with SHIELD [C]', W / 2, 62, 12, e.exposed ? '#fd5' : '#9cf', 'center');
   if (e.boss) { // health bar
@@ -1079,12 +1143,12 @@ function draw() {
     }
     for (const r of rings) { ctx.strokeStyle = `rgba(255,140,210,${1 - r.t / 20})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, 10 + r.t * 6.5, 0, 6.283); ctx.stroke(); }
     for (const b of bolts) {
-      ctx.strokeStyle = `rgba(255,240,120,${b.t / 10})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x1, b.y1);
+      ctx.strokeStyle = b.green ? `rgba(110,255,170,${b.t / 10})` : `rgba(255,240,120,${b.t / 10})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x1, b.y1);
       for (let k = 1; k < 4; k++) ctx.lineTo(b.x1 + (b.x2 - b.x1) * k / 4 + rand(-8, 8), b.y1 + (b.y2 - b.y1) * k / 4 + rand(-8, 8));
       ctx.lineTo(b.x2, b.y2); ctx.stroke();
     }
     ctx.fillStyle = '#9ff'; for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 14);
-    for (const b of ebullets) { ctx.fillStyle = b.home ? '#c6f' : '#f6a'; ctx.beginPath(); ctx.arc(b.x, b.y, b.home ? 6 : 4, 0, 6.283); ctx.fill(); if (b.home) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); } }
+    for (const b of ebullets) { ctx.fillStyle = b.bomb ? (b.fuse % 10 < 4 ? '#fff' : '#fa3') : b.home ? '#c6f' : '#f6a'; ctx.beginPath(); ctx.arc(b.x, b.y, b.bomb ? 7 : b.home ? 6 : 4, 0, 6.283); ctx.fill(); if (b.home) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); } }
     if (state !== 'over') drawPlayer();
     drawBuffs();
     drawCarnage();
