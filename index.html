@@ -108,7 +108,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let ballFx, fxMax, bolts, mode, lastMode, rushN, rushT, runT, bossT, rushBest, rings, well, wind, pv, cy, windLines, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, mode, lastMode, rushN, rushT, runT, bossT, rushBest, rings, strikes, stormT, zones, gridZ, gridT, bumpers, mirrorT, well, wind, pv, cy, windLines, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 rushBest = +(localStorage.getItem('starfighter_rush') || 0);
 
@@ -203,6 +203,18 @@ const THEMES = [
     spawn: [['cloaker', 2], ['sniper', 2], ['mine', 2.5], ['spiral', 2], ['kamikaze', 2], ['swarm', 1.5], ['medic', 1]] },
   { name: 'CANYON RUN', mech: 'canyon', hint: 'CANYON: the walls are solid - stay inside', bg: ['#0e0a06', '#241608'], blob: '180,110,50', star: '#fda',
     spawn: [['tank', 2], ['bomber', 2], ['strafer', 2], ['guardian', 2], ['drone', 2], ['wing', 2], ['mine', 1]] },
+  { name: 'WARP RING', mech: 'wrap', hint: 'WARP: the edges wrap - leave one side, enter the other', bg: ['#00101a', '#001f33'], blob: '0,200,255', star: '#cff',
+    spawn: [['wing', 3], ['strafer', 2.5], ['swarm', 2], ['kamikaze', 2], ['drone', 2], ['bomber', 1.5], ['spiral', 1]] },
+  { name: 'STORM FRONT', mech: 'storm', hint: 'STORM: lightning strikes where the rings appear', bg: ['#08080f', '#161628'], blob: '170,170,255', star: '#ccf',
+    spawn: [['drone', 3], ['wing', 2], ['tank', 2], ['guardian', 1.5], ['sniper', 1.5], ['mine', 1.5], ['splitter', 1.5]] },
+  { name: 'STASIS FIELD', mech: 'stasis', hint: 'STASIS: time crawls for enemies inside the bubbles', bg: ['#0a0a18', '#16183a'], blob: '120,140,255', star: '#dde',
+    spawn: [['kamikaze', 2], ['swarm', 2], ['wing', 2], ['tank', 1.5], ['bomber', 1.5], ['drone', 2]] },
+  { name: 'ELECTRIC GRID', mech: 'grid', hint: 'GRID: lanes electrify - find the safe lane', bg: ['#02140a', '#04301a'], blob: '60,255,120', star: '#cfd',
+    spawn: [['drone', 2.5], ['line', 2], ['strafer', 2], ['guardian', 1.5], ['medic', 1], ['spiral', 1.5], ['tank', 1.5]] },
+  { name: 'MIRROR VOID', mech: 'mirror', hint: 'MIRROR: a shadow copies your every move', bg: ['#0a0a0a', '#1c1c24'], blob: '200,200,220', star: '#fff',
+    spawn: [['cloaker', 2], ['wing', 2], ['sniper', 2], ['drone', 2], ['spiral', 1.5], ['kamikaze', 1.5], ['medic', 1]] },
+  { name: 'PINBALL ZONE', mech: 'pinball', hint: 'PINBALL: bumpers launch the ball and reflect enemy shots', bg: ['#14001a', '#2e0040'], blob: '255,60,200', star: '#fcf',
+    spawn: [['drone', 3], ['wing', 2.5], ['mine', 2], ['tank', 1.5], ['splitter', 2], ['swarm', 1.5], ['bomber', 1]] },
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
 stage = 1; banner = { t: 0 }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
@@ -274,9 +286,13 @@ function enemyShoot(e, aimed) {
 }
 
 // ---------- Carnage: debris, fireballs, chain reactions, kill streaks ----------
-function resetMech() { well = null; wind = { v: 0, target: 0, t: 200 }; pv = { x: 0, y: 0 }; cy = 0; windLines = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, len: 10 + Math.random() * 20 })); }
+function resetMech() {
+  strikes = []; stormT = 90; gridZ = []; gridT = 120; mirrorT = 240;
+  zones = Array.from({ length: 3 }, (_, i) => ({ x: 100 + i * 140, y: 220 + i * 90, r: 85, vx: (i % 2 ? 1 : -1) * 0.5, vy: 0.35 * (i + 1) * 0.6 }));
+  bumpers = [[110, 230], [370, 230], [240, 320], [150, 430], [330, 430]].map(([x, y]) => ({ x, y, r: 20, hit: 0 }));
+  well = null; wind = { v: 0, target: 0, t: 200 }; pv = { x: 0, y: 0 }; cy = 0; windLines = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, len: 10 + Math.random() * 20 })); }
 function resetCarnage() { resetMech(); debris = []; booms = []; floats = []; later = []; streak = 0; streakT = 0; kfx = null; hitStop = 0; slowmo = 0; chainDepth = 0; }
-const ENEMY_COL = { drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
+const ENEMY_COL = { mirror: '#a4c', drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
 function carnage(e) {
   const big = e.boss ? 3 : e.w > 40 ? 2 : 1, col = ENEMY_COL[e.type] || '#ff8a3a';
   booms.push({ x: e.x, y: e.y, t: 0, max: e.boss ? 50 : 20 + big * 4, size: e.boss ? 120 : 24 + big * 14 });
@@ -341,6 +357,7 @@ function killEnemy(e) {
   if (floats.length < 50) floats.push({ x: e.x, y: e.y - 8, txt: '+' + gain, t: 45, col: '#fd5', sz: e.boss ? 22 : 13 });
   carnage(e); streakReward();
   if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
+  if (e.type === 'mirror') mirrorT = 480;
   if (e.type === 'splitter' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'splitter', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: 2.2, vx: sx * 1.8, ph: 0, pts: 50, fire: 9999 });
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
@@ -505,8 +522,9 @@ function updateChaos() {
 const mech = () => theme().mech;
 const wallL = y => 48 + 26 * Math.sin((y + cy) / 110) + 14 * Math.sin((y + cy) / 37);
 const wallR = y => 48 + 26 * Math.sin((y + cy) / 130 + 2) + 14 * Math.sin((y + cy) / 43 + 1);
-const leftB = y => mech() === 'canyon' ? wallL(y) : 0;
-const rightB = y => mech() === 'canyon' ? W - wallR(y) : W;
+const leftB = y => mech() === 'canyon' ? wallL(y) : mech() === 'wrap' ? -40 : 0;
+const rightB = y => mech() === 'canyon' ? W - wallR(y) : mech() === 'wrap' ? W + 40 : W;
+const wrapX = x => x < 0 ? x + W : x > W ? x - W : x;
 function updateMech() {
   const p = player, m = mech(), boss = enemies.some(e => e.boss);
   if (m === 'canyon') {
@@ -537,10 +555,113 @@ function updateMech() {
     for (const ball of balls) { const g = pull(ball); if (g.d < 200 && !ball.stuck && !ball.mag) { ball.vx += g.ux * 0.08; ball.vy += g.uy * 0.08; const sp = Math.hypot(ball.vx, ball.vy); if (sp > 10) { ball.vx *= 10 / sp; ball.vy *= 10 / sp; } } }
   } else if (m !== 'gravity') well = null;
   if (m === 'gravity' && boss) well = null;
+  if (m === 'wrap') {
+    if (p.x < -18) p.x += W + 36; else if (p.x > W + 18) p.x -= W + 36;
+    for (const b of balls) { if (b.x < -18) b.x += W + 36; else if (b.x > W + 18) b.x -= W + 36; }
+  }
+  if (m === 'storm') {
+    for (const l of windLines) { l.y += 14; l.x -= 2; if (l.y > H) { l.y = -20; l.x = rand(0, W + 40); } }
+    if (!boss && --stormT <= 0) { stormT = Math.max(45, 110 - level * 6); strikes.push({ x: Math.random() < 0.5 ? Math.max(30, Math.min(W - 30, p.x + rand(-60, 60))) : rand(30, W - 30), y: Math.random() < 0.5 ? Math.max(120, Math.min(H - 60, p.y + rand(-80, 40))) : rand(120, H - 100), t: 0 }); }
+    for (const s of strikes) {
+      s.t++;
+      if (s.t === 60) {
+        if (Math.hypot(p.x - s.x, p.y - s.y) < 42) hurtPlayer();
+        for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - s.x, e.y - s.y) < 50) hurtEnemy(e, e.boss ? 8 : 4);
+        for (const b of ebullets) if (Math.hypot(b.x - s.x, b.y - s.y) < 55) { b.dead = true; b.x = -999; }
+        for (const b of bricks) if (!b.dead && Math.hypot(b.x - s.x, b.y - s.y) < 50) hurtBrick(b, 2);
+        bolts.push({ x1: s.x + rand(-20, 20), y1: 0, x2: s.x, y2: s.y, t: 12 }); burst(s.x, s.y, 14, '#fff', 4); shake = Math.max(shake, 6); flash = Math.max(flash, 5); sfx.boom();
+      }
+    }
+    strikes = strikes.filter(s => s.t < 80);
+  }
+  if (m === 'stasis') {
+    for (const z of zones) { z.x += z.vx; z.y += z.vy; if (z.x < z.r || z.x > W - z.r) z.vx *= -1; if (z.y < 150 || z.y > H - 200) z.vy *= -1; }
+    const inZ = o => zones.some(z => Math.hypot(o.x - z.x, o.y - z.y) < z.r);
+    for (const b of ebullets) b.slowz = inZ(b);
+    for (const e of enemies) e.slowz = !e.boss && inZ(e);
+  }
+  if (m === 'grid') {
+    if (--gridT <= 0 && gridZ.length < 2 && !boss) {
+      const free = [0, 1, 2, 3].filter(l => !gridZ.some(g => g.lane === l)); gridZ.push({ lane: free[Math.floor(Math.random() * free.length)], t: 0 }); gridT = rand(130, 200);
+    }
+    const lw = W / 4;
+    for (const g of gridZ) {
+      g.t++;
+      if (g.t >= 70 && g.t < 130) {
+        if (!g.hit && p.x > g.lane * lw && p.x < (g.lane + 1) * lw) { g.hit = true; hurtPlayer(); }
+        for (const e of enemies) if (!e.dead && !e.boss && e.x > g.lane * lw && e.x < (g.lane + 1) * lw) hurtEnemy(e, 0.1);
+      }
+    }
+    gridZ = gridZ.filter(g => g.t < 130);
+  }
+  if (m === 'mirror' && !boss && !enemies.some(e => e.type === 'mirror') && --mirrorT <= 0) {
+    enemies.push({ type: 'mirror', x: W - p.x, y: 120, w: 30, h: 32, hp: 10 + level * 2, mhp: 10 + level * 2, vy: 0, ph: 0, cd: 30, pts: 600, fire: 9999 });
+    banner = { t: 90, l1: 'SHADOW', l2: 'MIRROR ENEMY' };
+  }
+  if (m === 'pinball') {
+    for (const bp of bumpers) {
+      if (bp.hit > 0) bp.hit--;
+      for (const ball of balls) {
+        const dx = ball.x - bp.x, dy = ball.y - bp.y, d = Math.hypot(dx, dy) || 1;
+        if (d < bp.r + ball.r && !ball.stuck) {
+          const nx = dx / d, ny = dy / d, dot = ball.vx * nx + ball.vy * ny;
+          if (dot < 0) { ball.vx -= 2 * dot * nx; ball.vy -= 2 * dot * ny; }
+          const sp = Math.hypot(ball.vx, ball.vy) || 1, ns = Math.min(11, sp + 1.5); ball.vx *= ns / sp; ball.vy *= ns / sp;
+          ball.x = bp.x + nx * (bp.r + ball.r + 1); ball.y = bp.y + ny * (bp.r + ball.r + 1);
+          bp.hit = 12; score += 50; sfx.brick(); burst(bp.x + nx * bp.r, bp.y + ny * bp.r, 5, '#f8f', 3);
+        }
+      }
+      for (const b of ebullets) {
+        const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy) || 1;
+        if (d < bp.r + 5 && !b.friend) { const nx = dx / d, ny = dy / d, dot = b.vx * nx + b.vy * ny; if (dot < 0) { b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny; } b.vx *= 1.25; b.vy *= 1.25; b.friend = true; bp.hit = 8; }
+      }
+      { const dx = p.x - bp.x, dy = p.y - bp.y, d = Math.hypot(dx, dy) || 1; if (d < bp.r + 16) { p.x = bp.x + dx / d * (bp.r + 16); p.y = bp.y + dy / d * (bp.r + 16); pv.x = dx / d * 4; pv.y = dy / d * 4; bp.hit = 8; } }
+    }
+    for (const b of ebullets) if (b.friend) for (const e of enemies) if (!e.dead && !b.dead && e.y > -10 && Math.abs(b.x - e.x) < e.w / 2 + 5 && Math.abs(b.y - e.y) < e.h / 2 + 5) { b.dead = true; b.x = -999; hurtEnemy(e, 2); }
+  }
   p.x = Math.max(leftB(p.y) + 16, Math.min(rightB(p.y) - 16, p.x)); p.y = Math.max(40, Math.min(H - 30, p.y));
 }
 function drawMechBack() {
   const m = mech(), t = frame;
+  if (m === 'wrap') {
+    for (const side of [0, 1]) { const g = ctx.createLinearGradient(side ? W : 0, 0, side ? W - 28 : 28, 0); g.addColorStop(0, 'rgba(0,220,255,0.55)'); g.addColorStop(1, 'rgba(0,220,255,0)'); ctx.fillStyle = g; ctx.fillRect(side ? W - 28 : 0, 0, 28, H); }
+  }
+  if (m === 'storm' && state !== 'title') {
+    ctx.strokeStyle = 'rgba(170,200,255,0.25)'; ctx.lineWidth = 1;
+    for (const l of windLines) { ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x - 3, l.y - l.len * 0.8); ctx.stroke(); }
+    for (const s of strikes) if (s.t < 60) {
+      ctx.strokeStyle = `rgba(255,255,160,${0.35 + 0.5 * Math.sin(s.t / 3) ** 2})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, 44, 0, 6.283); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,160,0.22)'; ctx.beginPath(); ctx.arc(s.x, s.y, 44 * s.t / 60, 0, 6.283); ctx.fill();
+    }
+  }
+  if (m === 'stasis' && state !== 'title') {
+    for (const z of zones) {
+      const g = ctx.createRadialGradient(z.x, z.y, 10, z.x, z.y, z.r); g.addColorStop(0, 'rgba(120,150,255,0.05)'); g.addColorStop(1, 'rgba(120,150,255,0.28)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = 'rgba(190,210,255,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.stroke(); ctx.setLineDash([]);
+      const a = t * 0.02; ctx.beginPath(); ctx.moveTo(z.x, z.y); ctx.lineTo(z.x + Math.cos(a) * 22, z.y + Math.sin(a) * 22); ctx.moveTo(z.x, z.y); ctx.lineTo(z.x + Math.cos(a * 0.1) * 14, z.y + Math.sin(a * 0.1) * 14); ctx.stroke();
+    }
+  }
+  if (m === 'grid' && state !== 'title') {
+    const lw = W / 4;
+    for (const g of gridZ) {
+      if (g.t < 70) { ctx.fillStyle = `rgba(255,230,60,${Math.floor(g.t / 6) % 2 ? 0.16 : 0.04})`; ctx.fillRect(g.lane * lw, 0, lw, H); }
+      else {
+        const gr = ctx.createLinearGradient(g.lane * lw, 0, (g.lane + 1) * lw, 0); gr.addColorStop(0, 'rgba(120,255,160,0.1)'); gr.addColorStop(0.5, 'rgba(230,255,200,0.6)'); gr.addColorStop(1, 'rgba(120,255,160,0.1)');
+        ctx.fillStyle = gr; ctx.fillRect(g.lane * lw, 0, lw, H);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); let x = g.lane * lw + lw / 2; ctx.moveTo(x, 0);
+        for (let y = 0; y < H; y += 30) { x = g.lane * lw + lw / 2 + rand(-18, 18); ctx.lineTo(x, y); } ctx.stroke();
+      }
+    }
+  }
+  if (m === 'pinball' && state !== 'title') {
+    for (const bp of bumpers) {
+      const lit = bp.hit > 0;
+      ctx.fillStyle = lit ? '#fff' : '#601070'; ctx.beginPath(); ctx.arc(bp.x, bp.y, bp.r, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = lit ? '#fff' : '#f4f'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = lit ? '#f8f' : '#c3c'; ctx.beginPath(); ctx.arc(bp.x, bp.y, bp.r * 0.45, 0, 6.283); ctx.fill();
+    }
+  }
   if (m === 'canyon' && state !== 'title') {
     for (const side of [0, 1]) {
       ctx.beginPath(); ctx.moveTo(side ? W : 0, -10);
@@ -898,7 +1019,7 @@ function update() {
   if (banner.t > 0) banner.t--;
 
   // bullets
-  for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
+  for (const b of bullets) { b.x += b.vx; b.y += b.vy; if (mech() === 'wrap') b.x = wrapX(b.x); }
   bullets = bullets.filter(b => b.y > -20 && b.x > -10 && b.x < W + 10);
   if (!(buff.slow > 0 && frame % 2)) for (const b of ebullets) {
     if (b.home) { // slow-turning homing orb
@@ -908,18 +1029,25 @@ function update() {
       if (--b.life <= 0) b.home = false;
     }
     if (b.bomb && !b.dead && --b.fuse <= 0) { detonate(b); continue; }
-    b.x += b.vx; b.y += b.vy;
+    const zk = b.slowz && mech() === 'stasis' ? 0.4 : 1;
+    b.x += b.vx * zk; b.y += b.vy * zk; if (mech() === 'wrap') b.x = wrapX(b.x);
   }
   ebullets = ebullets.filter(b => b.y < H + 20 && b.y > -20 && b.x > -20 && b.x < W + 20);
 
   // enemies
   for (const e of enemies) {
     if (buff.slow > 0 && frame % 2) continue; // time warp: enemies act at half speed
+    if (e.slowz && mech() === 'stasis' && frame % 5 < 3) continue; // inside a stasis bubble
     e.ph += 0.05; if (e.flash) e.flash--;
     if (e.type === 'drone') { e.y += e.vy; e.x += Math.sin(e.ph) * 1.5; }
     else if (e.type === 'wing') { e.y += e.vy; e.x = e.cx + Math.sin(e.ph * 1.5) * 90; }
     else if (e.type === 'tank') { e.y += e.vy; }
     else if (e.type === 'kamikaze') { e.y += e.vy; e.x += Math.sign(p.x - e.x) * Math.min(2.2, Math.abs(p.x - e.x)); }
+    else if (e.type === 'mirror') { // shadow: mirrors your position and fires while you do
+      e.x += (W - p.x - e.x) * 0.12; e.y += (Math.max(70, Math.min(380, H - p.y)) - e.y) * 0.1;
+      if (e.cd > 0) e.cd--;
+      if (e.cd <= 0 && (keys.Space || keys.Numpad0 || touch || autoFire)) { e.cd = 14; ebullets.push({ x: e.x, y: e.y + 16, vx: 0, vy: 4.6, w: 8, h: 8 }); }
+    }
     else if (e.type === 'splitter') { e.y += e.vy; e.x += e.size === 2 ? Math.sin(e.ph) * 1.2 : e.vx; if (e.x < 15 || e.x > W - 15) e.vx *= -1; }
     else if (e.type === 'guardian') {
       e.y += e.vy; e.x += Math.sin(e.ph * 0.7) * 0.6;
@@ -1103,6 +1231,7 @@ function drawEnemy(e) {
   else if (e.type === 'wing') { poly([[0, 12], [14, -6], [8, -12], [0, -6], [-8, -12], [-14, -6]], c('#b4f'), '#e9f'); }
   else if (e.type === 'tank') { poly([[0, 19], [22, 6], [22, -12], [10, -19], [-10, -19], [-22, -12], [-22, 6]], c('#4a6'), '#9f9'); ctx.fillStyle = '#143'; ctx.fillRect(-8, -8, 16, 14); ctx.fillStyle = '#f44'; ctx.fillRect(-3, -3, 6, 6); }
   else if (e.type === 'kamikaze') { poly([[0, 13], [11, -6], [0, -13], [-11, -6]], c('#fa0'), '#ff8'); }
+  else if (e.type === 'mirror') { ctx.scale(1, -1); poly([[0, -22], [8, 8], [5, 14], [-5, 14], [-8, 8]], c('#6a2a8a'), '#e8f'); poly([[-5, -4], [-22, 16], [-8, 12]], '#a33', '#f9a'); poly([[5, -4], [22, 16], [8, 12]], '#a33', '#f9a'); }
   else if (e.type === 'splitter') {
     ctx.scale(e.w / 30, e.w / 30); poly([[0, 15], [14, 6], [14, -8], [0, -15], [-14, -8], [-14, 6]], c('#2bb5a0'), '#aff');
     ctx.strokeStyle = '#0a5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(0, 15); ctx.stroke();
