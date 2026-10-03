@@ -40,7 +40,9 @@ addEventListener('keydown', e => {
   if (!e.repeat && code === 'KeyT') { autoFire = !autoFire; try { localStorage.setItem('starfighter_auto', autoFire ? '1' : '0'); } catch (err) {} }
   keys[code] = true; keys[e.code] = true;
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code) || code.startsWith('Numpad') || e.location === 3) e.preventDefault();
-  if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { audioInit(); if (state === 'title' || state === 'over') start(); }
+  if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { audioInit(); if (state === 'title') start('arcade'); else if (state === 'over') start(lastMode); }
+  if (code === 'KeyB' && state === 'title') { audioInit(); start('rush'); }
+  if ((code === 'KeyM' || code === 'Escape') && state === 'over') state = 'title';
   if (state === 'upgrade') { const n = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[code]; if (n !== undefined) pickUpgrade(n); }
   if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
 });
@@ -59,8 +61,12 @@ function readTouches(e) {
     else if (!touch) touch = { x, y };
   }
 }
-cv.addEventListener('touchstart', e => { usedTouch = true; fireLatch = true; audioInit(); if (state === 'title' || state === 'over') start(); readTouches(e); if (state === 'upgrade') pickAt(e.touches[0]); e.preventDefault(); }, {passive:false});
-cv.addEventListener('click', e => { if (state === 'upgrade') pickAt(e); });
+cv.addEventListener('touchstart', e => { usedTouch = true; fireLatch = true; audioInit(); if (state === 'title') start(e.touches[0].clientY - cv.getBoundingClientRect().top > cv.getBoundingClientRect().height * 405 / H ? 'rush' : 'arcade'); else if (state === 'over') start(lastMode); readTouches(e); if (state === 'upgrade') pickAt(e.touches[0]); e.preventDefault(); }, {passive:false});
+cv.addEventListener('click', e => {
+  if (state === 'upgrade') pickAt(e);
+  else if (state === 'title') { audioInit(); start(e.clientY - cv.getBoundingClientRect().top > cv.getBoundingClientRect().height * 405 / H ? 'rush' : 'arcade'); }
+  else if (state === 'over') start(lastMode);
+});
 function pickAt(pt) {
   const r = cv.getBoundingClientRect(), y = (pt.clientY - r.top) / r.height * H;
   for (let i = 0; i < upChoices.length; i++) if (y >= CARD_Y + i * 120 && y <= CARD_Y + i * 120 + 106) pickUpgrade(i);
@@ -102,19 +108,22 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let ballFx, fxMax, bolts, rings, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, mode, lastMode, rushN, rushT, runT, bossT, rushBest, rings, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
+rushBest = +(localStorage.getItem('starfighter_rush') || 0);
 
 stars = [];
 for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 1.7 });
 
-function start() {
+function start(m = 'arcade') {
+  mode = m; lastMode = m; rushN = 0; rushT = 150; runT = 0; bossT = 0;
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 250, pending: 0, lvlFlash: 0 };
   st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
   stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
   ballFx = newFx(); fxMax = newFx(); bolts = []; rings = []; beamT = 200; bombing = false;
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
+  if (m === 'rush') { banner = { t: 150, l1: 'BOSS RUSH', l2: 'GET READY' }; launchBall(); }
   state = 'play';
 }
 
@@ -253,7 +262,7 @@ function carnage(e) {
     debris.push({ x: e.x + rand(-e.w / 3, e.w / 3), y: e.y + rand(-e.h / 3, e.h / 3), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: rand(0, 6.283), vr: rand(-0.3, 0.3), s: rand(3, e.boss ? 10 : 7), life: rand(35, 70), max: 70, col: i % 3 ? col : '#ffb347', g: 0, hit: !e.boss && i % 2 === 0 });
   }
   for (let i = 0; i < 4; i++) particles.push({ x: e.x + rand(-8, 8), y: e.y + rand(-8, 8), vx: rand(-0.5, 0.5), vy: rand(-1.2, -0.2), life: 50, max: 50, col: '#667' });
-  shake = Math.max(shake, e.boss ? 30 : 3 + big * 2); hitStop = Math.max(hitStop, e.boss ? 12 : big >= 2 ? 3 : 0);
+  shake = Math.max(shake, e.boss ? 20 : 2 + big); hitStop = Math.max(hitStop, e.boss ? 4 : 0);
   if (chainDepth < 5) { // chain reaction: wrecks damage their neighbours
     chainDepth++;
     for (const o of enemies) if (o !== e && !o.dead && !o.boss && o.y > -10 && Math.hypot(o.x - e.x, o.y - e.y) < 55 + big * 10) hurtEnemy(o, 1 + (e.volatile ? 1 : 0));
@@ -310,8 +319,18 @@ function killEnemy(e) {
   if (e.volatile && !bombing) for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.random(); ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.4, vy: Math.sin(a) * 2.4, w: 8, h: 8 }); }
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
-  if (e.boss) { slowmo = 50; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
+  if (e.boss) { slowmo = 24; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
   if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
+  if (e.boss && mode === 'rush') { // boss rush: reward, recover and queue the next boss
+    rushN++; rushT = 260;
+    const bonus = Math.max(500, 3000 - Math.floor((runT - bossT) / 60) * 50); score += bonus;
+    floats.push({ x: e.x, y: e.y + 30, txt: 'TIME BONUS +' + bonus, t: 80, col: '#8ef', sz: 16 });
+    player.energy = maxEnergy(); player.bombs = Math.min(5, player.bombs + 1); if (rushN % 2 === 0) player.lives = Math.min(6, player.lives + 1);
+    for (let i = 0; i < 2; i++) powerups.push({ x: e.x + (i ? 70 : -70), y: e.y, kind: i ? buffDrop() : ballDrop(), w: 18, h: 18 });
+    if (player.pending === 0) addXp(player.xpNext - player.xp); // guarantee an upgrade pick after every boss
+    banner = { t: 150, l1: 'BOSS DEFEATED', l2: 'NEXT: ' + BOSS_NAMES[rushN % BOSS_NAMES.length] };
+    if (rushN > rushBest) { rushBest = rushN; try { localStorage.setItem('starfighter_rush', rushBest); } catch (err) {} }
+  }
   if (e.boss) { shake = 30; flash = 20; ebullets = []; hballs = []; beams = []; bricks = bricks.filter(b => !b.armor); for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: i === 1 ? SPECIALS[Math.floor(Math.random() * SPECIALS.length)] : ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
   else if (Math.random() < 0.18) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', ballDrop(), ballDrop(), buffDrop(), buffDrop()][Math.floor(Math.random() * 8)], w: 18, h: 18 });
 }
@@ -446,6 +465,7 @@ function startChaos(c = CHAOS[Math.floor(Math.random() * CHAOS.length)]) {
   }
 }
 function updateChaos() {
+  if (mode === 'rush') return;
   if (enemies.some(e => e.boss)) { chaos = null; return; }
   if (!chaos) { if (--chaosT <= 0) startChaos(); return; }
   const c = chaos, f = c.dur - c.t;
@@ -457,7 +477,7 @@ function updateChaos() {
 }
 function updateBeams() {
   const p = player;
-  if ((stage - 1) % THEMES.length === 4 && !enemies.some(e => e.boss) && --beamT <= 0) { beams.push({ x: Math.random() < 0.6 ? p.x : rand(30, W - 30), t: 0 }); beamT = Math.max(150, 330 - level * 12); }
+  if (mode === 'arcade' && (stage - 1) % THEMES.length === 4 && !enemies.some(e => e.boss) && --beamT <= 0) { beams.push({ x: Math.random() < 0.6 ? p.x : rand(30, W - 30), t: 0 }); beamT = Math.max(150, 330 - level * 12); }
   for (const b of beams) { b.t++; if (b.t >= 70 && b.t < 95 && !b.hit && Math.abs(p.x - b.x) < 16) { b.hit = true; hurtPlayer(); } }
   beams = beams.filter(b => b.t < 95);
 }
@@ -706,6 +726,7 @@ function update() {
   if (state !== 'play') return;
   if (hitStop > 0) { hitStop--; return; } // impact freeze on big kills
   if (slowmo > 0) slowmo--;
+  runT++;
 
   // player movement
   const p = player, sp = 5 + 0.4 * st.spd;
@@ -740,7 +761,9 @@ function update() {
 
   // level / spawning
   const bossAlive = enemies.some(e => e.boss);
-  if (!bossAlive) {
+  if (mode === 'rush') {
+    if (!bossAlive && --rushT <= 0) { level = rushN + 1; stage = level; spawnBoss(); bossT = runT; rushT = 99999; }
+  } else if (!bossAlive) {
     if (--spawnT <= 0) {
       spawn(); if (Math.random() < 0.35) spawn();
       spawnT = Math.max(10, 40 - level * 4);
@@ -1070,7 +1093,8 @@ function draw() {
     // HUD
     text('SCORE ' + String(score).padStart(7, '0'), 10, 24, 16);
     text('HI ' + String(hi).padStart(7, '0'), W - 10, 24, 16, '#fd5', 'right');
-    text('STAGE ' + stage, W / 2, 24, 14, '#8f8', 'center');
+    if (mode === 'rush') { const sec = Math.floor(runT / 60); text('BOSS RUSH ' + rushN + '  ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'), W / 2, 24, 13, '#f9a', 'center'); }
+    else text('STAGE ' + stage, W / 2, 24, 14, '#8f8', 'center');
     // ship level + xp bar
     text('SHIP LV ' + player.lvl, 10, 44, 12, '#8ef');
     ctx.fillStyle = '#123'; ctx.fillRect(90, 35, 120, 7); ctx.fillStyle = '#4fa'; ctx.fillRect(90, 35, 120 * player.xp / player.xpNext, 7);
@@ -1124,7 +1148,10 @@ function draw() {
   if (state === 'title') {
     text('STARFIGHTER', W / 2, 250, 48, '#6cf', 'center');
     text('— ARCADE —', W / 2, 285, 18, '#fd5', 'center');
-    if (Math.floor(frame / 30) % 2 === 0 || true) text('PRESS ENTER / TAP TO START', W / 2, 390, 18, Math.floor(Date.now() / 500) % 2 ? '#fff' : '#888', 'center');
+    const blink = Math.floor(Date.now() / 500) % 2 ? '#fff' : '#9ab';
+    text('ENTER / TAP TOP  -  ARCADE', W / 2, 365, 17, blink, 'center');
+    text('B / TAP HERE  -  BOSS RUSH', W / 2, 400, 17, Math.floor(Date.now() / 500) % 2 ? '#f9a' : '#a67', 'center');
+    if (rushBest) text('rush best: ' + rushBest + ' bosses', W / 2, 424, 12, '#a67', 'center');
     text('ARROWS / WASD / IJKL / NUMPAD  move', W / 2, 460, 14, '#aaa', 'center');
     text('SPACE / NUM0 fire   X missiles   C shield   B bomb', W / 2, 484, 14, '#aaa', 'center');
     text('O power-up: bounce the ball off your ship', W / 2, 532, 14, '#aaa', 'center');
@@ -1157,7 +1184,9 @@ function draw() {
     text('GAME OVER', W / 2, 290, 44, '#f55', 'center');
     text('SCORE ' + score, W / 2, 340, 22, '#fff', 'center');
     text('Reached ship level ' + player.lvl, W / 2, 400, 15, '#8ef', 'center');
+    if (mode === 'rush') { const sec = Math.floor(runT / 60); text('BOSSES DEFEATED ' + rushN + '   TIME ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + '   BEST ' + rushBest, W / 2, 460, 14, '#f9a', 'center'); }
     if (score >= hi && score > 0) text('NEW HIGH SCORE!', W / 2, 372, 18, '#fd5', 'center');
+    text('M: menu', W / 2, 490, 12, '#789', 'center');
     text('PRESS ENTER / TAP TO RETRY', W / 2, 430, 16, Math.floor(Date.now() / 500) % 2 ? '#fff' : '#888', 'center');
   }
 }
@@ -1166,7 +1195,7 @@ function draw() {
 let last = performance.now(), acc = 0;
 function loop(t) {
   acc += Math.min(100, t - last); last = t;
-  for (let step = slowmo > 0 ? 1000 / 22 : 1000 / 60; acc >= step; step = slowmo > 0 ? 1000 / 22 : 1000 / 60) { update(); acc -= step; }
+  for (let step = slowmo > 0 ? 1000 / 40 : 1000 / 60; acc >= step; step = slowmo > 0 ? 1000 / 40 : 1000 / 60) { update(); acc -= step; }
   draw();
   requestAnimationFrame(loop);
 }
