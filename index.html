@@ -19,13 +19,26 @@ const ctx = cv.getContext('2d');
 
 // ---------- Input ----------
 const keys = {};
+// Numpad keys report different codes/keys depending on browser, layout and NumLock,
+// so map by physical location (3) and key name to a canonical NumpadN code.
+const NUMPAD_KEYS = { Insert: 0, End: 1, ArrowDown: 2, PageDown: 3, ArrowLeft: 4, Clear: 5, ArrowRight: 6, Home: 7, ArrowUp: 8, PageUp: 9 };
+function keyCode(e) {
+  if (e.location === 3) {
+    if (/^[0-9]$/.test(e.key)) return 'Numpad' + e.key;
+    if (e.key in NUMPAD_KEYS) return 'Numpad' + NUMPAD_KEYS[e.key];
+    if (e.key === 'Enter') return 'NumpadEnter';
+  }
+  return e.code;
+}
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code) || e.code.startsWith('Numpad')) e.preventDefault();
-  if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') { audioInit(); if (state !== 'play') start(); }
+  const code = keyCode(e);
+  keys[code] = true; keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code) || code.startsWith('Numpad') || e.location === 3) e.preventDefault();
+  if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { audioInit(); if (state !== 'play') start(); }
   if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
 });
-addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('keyup', e => { keys[keyCode(e)] = false; keys[e.code] = false; });
 
 let touch = null; // {x,y} in game coords
 let btnMissile = false, btnShield = false, usedTouch = false;
