@@ -97,7 +97,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 
 stars = [];
@@ -106,6 +106,7 @@ for (let i = 0; i < 90; i++) stars.push({ x: Math.random() * W, y: Math.random()
 function start() {
   player = { x: W / 2, y: H - 90, w: 28, h: 32, lives: 3, shield: 0, inv: 120, cd: 0, weapon: 1, wt: 0, bombs: 2, energy: 100, mcd: 0, shieldOn: false, lock: 0, lvl: 1, xp: 0, xpNext: 250, pending: 0, lvlFlash: 0 };
   st = {}; for (const u of UPGRADES) st[u.id] = 0; upChoices = [];
+  stage = 1; banner = { t: 150, l1: 'STAGE 1', l2: THEMES[0].name }; beams = []; beamT = 200; bombing = false;
   bullets = []; ebullets = []; missiles = []; bricks = []; balls = []; combo = 0; waveDone = 0; enemies = []; particles = []; powerups = [];
   score = 0; level = 1; frame = 0; spawnT = 60; shake = 0; flash = 0;
   state = 'play';
@@ -124,7 +125,7 @@ const UPGRADES = [
   { id: 'enr', name: 'Capacitor', desc: '+20 max energy', max: 6 },
   { id: 'reg', name: 'Recharger', desc: '+25% energy regeneration', max: 6 },
   { id: 'shd', name: 'Shield Matrix', desc: 'Shield drains 12% less energy', max: 5 },
-  { id: 'msl', name: 'Missile Pods', desc: 'Missiles: damage, blast, cost; extra pair every 3', max: 8 },
+  { id: 'msl', name: 'Missile Pods', desc: 'Stronger, cheaper missiles; +pair every 3', max: 8 },
   { id: 'ball', name: 'Ball Core', desc: 'Ball hits harder', max: 5 },
   { id: 'mag', name: 'Tractor Field', desc: 'Pull in power-ups from afar', max: 4 },
   { id: 'hull', name: 'Hull Repair', desc: '+1 life', max: 99, ok: () => player.lives < 6, apply: () => player.lives++, noLevel: true },
@@ -164,19 +165,59 @@ function burst(x, y, n, col, spd = 3) {
 }
 function hitRect(a, b) { return Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2; }
 
+// ---------- Stage themes ----------
+const THEMES = [
+  { name: 'DEEP SPACE', bg: ['#02020a', '#050522'], blob: '90,110,255', star: '#fff',
+    spawn: [['drone', 5], ['wing', 3], ['tank', 1.5], ['kamikaze', 0.5], ['line', 0.6]] },
+  { name: 'ASTEROID BELT', bg: ['#0a0503', '#1d1109'], blob: '200,130,70', star: '#fdb',
+    spawn: [['asteroid', 5], ['drone', 2], ['kamikaze', 1.5], ['tank', 1], ['line', 0.5]] },
+  { name: 'CRIMSON NEBULA', bg: ['#12020d', '#2b0719'], blob: '255,60,140', star: '#fcd',
+    spawn: [['wing', 3], ['sniper', 2.5], ['swarm', 2], ['drone', 2], ['mine', 0.6]] },
+  { name: 'IRON FORTRESS', bg: ['#03070b', '#0e1a25'], blob: '120,160,190', star: '#cde',
+    spawn: [['tank', 3], ['mine', 2.5], ['sniper', 2], ['drone', 1.5], ['line', 1]] },
+  { name: 'ION STORM', bg: ['#00100f', '#02302d'], blob: '60,255,220', star: '#bff',
+    spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1]] },
+];
+const theme = () => THEMES[(stage - 1) % THEMES.length];
+stage = 1; banner = { t: 0 }; beams = [];
+blobs = [];
+for (let i = 0; i < 5; i++) blobs.push({ x: Math.random() * W, y: Math.random() * H, r: rand0(90, 200), z: 0.3 + Math.random() * 0.7 });
+function rand0(a, b) { return a + Math.random() * (b - a); }
+
 // ---------- Enemies ----------
-function spawn() {
-  const r = Math.random();
-  const hpScale = 1 + Math.floor((level - 1) / 3);
-  if (r < 0.5) enemies.push({ type: 'drone', x: rand(30, W - 30), y: -30, w: 26, h: 26, hp: 1 * hpScale, vy: rand(1.2, 2) + level * 0.08, ph: Math.random() * 6, pts: 100, fire: rand(60, 200) });
-  else if (r < 0.8) { // zigzag wave of 3
-    const x0 = rand(80, W - 80);
-    for (let i = 0; i < 3; i++) enemies.push({ type: 'wing', x: x0, y: -30 - i * 45, w: 26, h: 24, hp: 1 * hpScale, vy: 2 + level * 0.05, ph: i * 0.8, pts: 150, fire: rand(80, 240), cx: x0 });
-  } else if (r < 0.95) enemies.push({ type: 'tank', x: rand(50, W - 50), y: -40, w: 44, h: 38, hp: 5 * hpScale, vy: 0.8, ph: 0, pts: 400, fire: 50 });
-  else enemies.push({ type: 'kamikaze', x: rand(30, W - 30), y: -30, w: 22, h: 26, hp: 2, vy: 3.5, ph: 0, pts: 250, fire: 9999 });
+function pickType() {
+  const tbl = theme().spawn; let r = Math.random() * tbl.reduce((a, t) => a + t[1], 0);
+  for (const [t, w] of tbl) { if ((r -= w) < 0) return t; }
+  return tbl[0][0];
 }
+function spawn() {
+  const hpScale = 1 + Math.floor((level - 1) / 3);
+  const drone = (x, y, vy, ph) => enemies.push({ type: 'drone', x, y, w: 26, h: 26, hp: 1 * hpScale, vy, ph, pts: 100, fire: rand(60, 200) });
+  switch (pickType()) {
+    case 'drone': drone(rand(30, W - 30), -30, rand(1.2, 2) + level * 0.08, Math.random() * 6); break;
+    case 'line': for (let i = 0; i < 6; i++) drone(65 + i * 70, -30, 1.6, 0); break;
+    case 'wing': { // zigzag wave of 3
+      const x0 = rand(80, W - 80);
+      for (let i = 0; i < 3; i++) enemies.push({ type: 'wing', x: x0, y: -30 - i * 45, w: 26, h: 24, hp: 1 * hpScale, vy: 2 + level * 0.05, ph: i * 0.8, pts: 150, fire: rand(80, 240), cx: x0 });
+      break;
+    }
+    case 'tank': enemies.push({ type: 'tank', x: rand(50, W - 50), y: -40, w: 44, h: 38, hp: 5 * hpScale, vy: 0.8, ph: 0, pts: 400, fire: 50 }); break;
+    case 'kamikaze': enemies.push({ type: 'kamikaze', x: rand(30, W - 30), y: -30, w: 22, h: 26, hp: 2, vy: 3.5, ph: 0, pts: 250, fire: 9999 }); break;
+    case 'asteroid': enemies.push({ type: 'asteroid', size: 2, x: rand(40, W - 40), y: -40, w: 38, h: 38, hp: 4 * hpScale, vy: rand(1, 1.9), vx: rand(-1, 1), rot: 0, vr: rand(-0.04, 0.04), shape: Array.from({ length: 9 }, () => rand(0.7, 1)), pts: 80, fire: 9999 }); break;
+    case 'sniper': enemies.push({ type: 'sniper', x: rand(130, W - 130), cx: rand(130, W - 130), y: -30, w: 32, h: 26, hp: 4 * hpScale, vy: 0, ph: 0, life: 0, hold: rand(70, 140), cd: 70, burst: 0, pts: 350, fire: 9999 }); break;
+    case 'swarm': { // V formation of fast darts
+      const x0 = rand(90, W - 90);
+      for (let i = 0; i < 5; i++) { const k = Math.ceil(i / 2) * (i % 2 ? 1 : -1); enemies.push({ type: 'dart', x: x0 + k * 30, y: -30 - Math.abs(k) * 26, w: 16, h: 20, hp: 1, vy: 4.2, ph: 0, pts: 60, fire: 9999 }); }
+      break;
+    }
+    case 'mine': enemies.push({ type: 'mine', x: rand(40, W - 40), y: -30, w: 26, h: 26, hp: 2, vy: 0.9, ph: Math.random() * 6, pts: 200, fire: 9999 }); break;
+  }
+}
+const BOSS_NAMES = ['DREADNOUGHT', 'HELIX', 'HIVEMIND'];
 function spawnBoss() {
-  enemies.push({ type: 'boss', x: W / 2, y: -80, w: 120, h: 70, hp: 60 + level * 20, max: 60 + level * 20, vy: 1, ph: 0, pts: 5000, fire: 40, boss: true });
+  const kind = (level - 1) % 3, hp = 60 + level * 20;
+  enemies.push({ type: 'boss', kind, sp: 0, t: 0, x: W / 2, y: -80, w: 120, h: 70, hp, max: hp, vy: 1, ph: 0, pts: 5000, fire: 40, boss: true });
+  banner = { t: 150, l1: 'WARNING', l2: BOSS_NAMES[kind] };
 }
 function enemyShoot(e, aimed) {
   let a = Math.PI / 2;
@@ -188,6 +229,9 @@ function enemyShoot(e, aimed) {
 function killEnemy(e) {
   burst(e.x, e.y, e.boss ? 80 : 18, e.boss ? '#ffd24a' : '#ff8a3a', e.boss ? 6 : 3.5);
   sfx.boom(); score += e.pts; addXp(Math.round(e.pts / 10));
+  if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
+  if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
+  if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
   if (e.boss) { shake = 30; flash = 20; ebullets = []; for (let i = 0; i < 3; i++) powerups.push({ x: e.x + (i - 1) * 40, y: e.y, kind: ['weapon', 'ball', 'bomb'][i], w: 18, h: 18 }); }
   else if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, kind: ['weapon', 'shield', 'bomb', 'life', 'ball', 'ball'][Math.floor(Math.random() * 6)], w: 18, h: 18 });
 }
@@ -205,8 +249,9 @@ function hurtPlayer() {
 }
 function bomb() {
   if (player.bombs <= 0) return;
-  player.bombs--; sfx.bomb(); flash = 25; shake = 20; ebullets = [];
+  player.bombs--; sfx.bomb(); bombing = true; flash = 25; shake = 20; ebullets = [];
   for (const e of enemies) { if (e.boss) hurtEnemy(e, 25); else if (e.y > -20) hurtEnemy(e, 99); }
+  bombing = false;
 }
 
 // ---------- Secondary weapons ----------
@@ -220,6 +265,12 @@ function explode(x, y) {
   burst(x, y, 22, '#ffb347', 4.5); sfx.boom(); shake = Math.max(shake, 4);
   for (const e of enemies) if (!e.dead && e.y > -10 && Math.hypot(e.x - x, e.y - y) < 55 + 5 * st.msl) hurtEnemy(e, 3 + st.msl);
   for (const b of bricks) if (!b.dead && Math.hypot(b.x - x, b.y - y) < 55 + 5 * st.msl) hurtBrick(b, 2);
+}
+function updateBeams() {
+  const p = player;
+  if ((stage - 1) % THEMES.length === 4 && !enemies.some(e => e.boss) && --beamT <= 0) { beams.push({ x: Math.random() < 0.6 ? p.x : rand(30, W - 30), t: 0 }); beamT = Math.max(150, 330 - level * 12); }
+  for (const b of beams) { b.t++; if (b.t >= 70 && b.t < 95 && !b.hit && Math.abs(p.x - b.x) < 16) { b.hit = true; hurtPlayer(); } }
+  beams = beams.filter(b => b.t < 95);
 }
 function updateSecondary() {
   const p = player;
@@ -258,10 +309,12 @@ function updateSecondary() {
 // ---------- Bricks & ball (breakout) ----------
 const BRICK_COLS = ['#e33', '#f93', '#fd3', '#4c4', '#39f', '#a5f'];
 function spawnBricks() {
-  const cols = 8, rows = 4 + Math.min(2, Math.floor(level / 2)), bw = W / cols;
+  const cols = 8, rows = 4 + Math.min(2, Math.floor(level / 2)), bw = W / cols, pat = (stage - 1) % 5;
+  const skip = [(r, c) => r > 1 && (c + r) % 5 === 0, (r, c) => (r + c) % 2 === 1, (r, c) => c < r || c > cols - 1 - r,
+    (r, c) => c >= 3 && c <= 4 && r >= 1, (r, c) => (r + c) % 3 === 0][pat];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    if (r > 1 && (c + r) % 5 === 0) continue; // gaps to let enemies/bullets weave
-    const hp = 1 + (r === 0 ? Math.min(2, Math.floor(level / 2)) : 0) + (r === 1 && level > 2 ? 1 : 0);
+    if (skip(r, c)) continue; // gaps to let enemies/bullets weave
+    const hp = 1 + (r === 0 ? Math.min(2, Math.floor(level / 2)) : 0) + (r === 1 && level > 2 ? 1 : 0) + (pat === 3 && r === rows - 1 ? 1 : 0);
     bricks.push({ x: c * bw + bw / 2, y: -40 - r * 22, w: bw - 3, h: 19, hp, max: hp, col: BRICK_COLS[(r + level) % BRICK_COLS.length] });
   }
   if (!balls.length) launchBall();
@@ -348,6 +401,7 @@ let bombLatch = false;
 function update() {
   frame++;
   // stars always scroll
+  for (const b of blobs) { b.y += b.z * 0.25; if (b.y - b.r > H) { b.y = -b.r; b.x = Math.random() * W; } }
   for (const s of stars) { s.y += s.z * (state === 'play' ? 1.5 : 0.6); if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
   if (state !== 'play') return;
 
@@ -393,6 +447,8 @@ function update() {
 
   updateSecondary();
   updateBricks();
+  updateBeams();
+  if (banner.t > 0) banner.t--;
 
   // bullets
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
@@ -407,14 +463,40 @@ function update() {
     else if (e.type === 'wing') { e.y += e.vy; e.x = e.cx + Math.sin(e.ph * 1.5) * 90; }
     else if (e.type === 'tank') { e.y += e.vy; }
     else if (e.type === 'kamikaze') { e.y += e.vy; e.x += Math.sign(p.x - e.x) * Math.min(2.2, Math.abs(p.x - e.x)); }
+    else if (e.type === 'asteroid') { e.y += e.vy; e.x += e.vx; e.rot += e.vr; if (e.x < 20 || e.x > W - 20) e.vx *= -1; }
+    else if (e.type === 'dart') { e.y += e.vy; e.x += Math.max(-0.9, Math.min(0.9, p.x - e.x)); }
+    else if (e.type === 'mine') { e.y += e.vy; e.x += Math.sin(e.ph * 0.8) * 0.6; }
+    else if (e.type === 'sniper') {
+      e.life++;
+      if (e.life < 700) {
+        if (e.y < e.hold) e.y += 1.8; else e.x = e.cx + Math.sin(e.ph * 0.6) * 110;
+        e.x = Math.max(30, Math.min(W - 30, e.x));
+        if (e.y >= e.hold - 2 && --e.cd <= 0) { e.burst = 3; e.cd = 120; }
+        if (e.burst > 0 && e.life % 7 === 0) { enemyShoot(e, true); e.burst--; }
+      } else { e.y -= 2.2; if (e.y < -60) e.dead = true; }
+    }
     else if (e.type === 'boss') {
-      if (e.y < 90) e.y += e.vy; else e.x = W / 2 + Math.sin(e.ph * 0.7) * (W / 2 - 90);
+      if (e.y < 90) e.y += e.vy; else e.x = W / 2 + Math.sin(e.ph * (e.kind === 1 ? 0.3 : 0.7)) * (W / 2 - (e.kind === 1 ? 200 : 90));
     }
     if (e.type === 'boss' && e.y >= 90) {
-      if (--e.fire <= 0) {
-        e.fire = e.hp < e.max / 2 ? 22 : 38;
-        const n = e.hp < e.max / 2 ? 9 : 5;
-        for (let i = 0; i < n; i++) { const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.28; ebullets.push({ x: e.x, y: e.y + 30, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2, w: 8, h: 8 }); }
+      const rage = e.hp < e.max / 2; e.t++;
+      if (e.kind === 0) { // spread fan
+        if (--e.fire <= 0) {
+          e.fire = rage ? 22 : 38;
+          const n = rage ? 9 : 5;
+          for (let i = 0; i < n; i++) { const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.28; ebullets.push({ x: e.x, y: e.y + 30, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2, w: 8, h: 8 }); }
+        }
+      } else if (e.kind === 1) { // rotating spiral arms, with a rest between volleys
+        if (e.t % 190 < 120 && e.t % (rage ? 5 : 7) === 0) {
+          e.sp += 0.27; const arms = rage ? 3 : 2;
+          for (let k = 0; k < arms; k++) { const a = e.sp + k * 6.283 / arms; ebullets.push({ x: e.x, y: e.y + 10, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8, w: 8, h: 8 }); }
+        }
+      } else { // aimed bursts + drone summons
+        if (e.t % (rage ? 55 : 80) === 0) {
+          const base = Math.atan2(p.y - e.y, p.x - e.x);
+          for (const d of [-0.22, 0, 0.22]) ebullets.push({ x: e.x, y: e.y + 30, vx: Math.cos(base + d) * 3.4, vy: Math.sin(base + d) * 3.4, w: 8, h: 8 });
+        }
+        if (e.t % (rage ? 170 : 240) === 0 && enemies.length < 12) for (const sx of [-1, 1]) enemies.push({ type: 'drone', x: e.x + sx * 70, y: e.y + 20, w: 26, h: 26, hp: 1, vy: 1.8, ph: Math.random() * 6, pts: 100, fire: rand(60, 200) });
       }
     } else if (e.type !== 'boss' && e.y > 0 && e.y < H - 200 && --e.fire <= 0) {
       e.fire = rand(90, 220) - level * 6; enemyShoot(e, e.type === 'tank' || level > 2);
@@ -494,9 +576,29 @@ function drawEnemy(e) {
   else if (e.type === 'wing') { poly([[0, 12], [14, -6], [8, -12], [0, -6], [-8, -12], [-14, -6]], c('#b4f'), '#e9f'); }
   else if (e.type === 'tank') { poly([[0, 19], [22, 6], [22, -12], [10, -19], [-10, -19], [-22, -12], [-22, 6]], c('#4a6'), '#9f9'); ctx.fillStyle = '#143'; ctx.fillRect(-8, -8, 16, 14); ctx.fillStyle = '#f44'; ctx.fillRect(-3, -3, 6, 6); }
   else if (e.type === 'kamikaze') { poly([[0, 13], [11, -6], [0, -13], [-11, -6]], c('#fa0'), '#ff8'); }
+  else if (e.type === 'asteroid') {
+    ctx.rotate(e.rot); const R = e.w / 2, n = e.shape.length; ctx.beginPath();
+    e.shape.forEach((k, i) => { const a = i / n * 6.283; ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * R * k, Math.sin(a) * R * k); });
+    ctx.closePath(); ctx.fillStyle = c('#7a6a5a'); ctx.fill(); ctx.strokeStyle = '#c8b090'; ctx.lineWidth = 1.5; ctx.stroke();
+    if (e.size === 2) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(-6, -4, 5, 0, 6.283); ctx.arc(7, 6, 4, 0, 6.283); ctx.fill(); }
+  }
+  else if (e.type === 'dart') { poly([[0, 11], [8, -10], [0, -5], [-8, -10]], c('#3df'), '#cff'); }
+  else if (e.type === 'mine') {
+    ctx.fillStyle = c('#556'); ctx.strokeStyle = '#99a'; ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + e.ph * 0.3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.lineTo(Math.cos(a) * 15, Math.sin(a) * 15); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = Math.sin(e.ph * 4) > 0 ? '#f33' : '#611'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 6.283); ctx.fill();
+  }
+  else if (e.type === 'sniper') {
+    poly([[0, 14], [16, -2], [12, -12], [-12, -12], [-16, -2]], c('#3a5fa0'), '#8bf');
+    ctx.fillStyle = '#123'; ctx.fillRect(-2, 6, 4, 12); ctx.fillStyle = e.burst > 0 ? '#fff' : '#f33'; ctx.beginPath(); ctx.arc(0, -3, 4, 0, 6.283); ctx.fill();
+  }
   else if (e.type === 'boss') {
-    poly([[0, 35], [60, 0], [50, -30], [20, -35], [-20, -35], [-50, -30], [-60, 0]], c('#823'), '#f68');
-    poly([[0, 22], [30, 0], [20, -22], [-20, -22], [-30, 0]], c('#c46'), '#fac');
+    const pal = [['#823', '#f68', '#c46'], ['#316', '#c9f', '#74c'], ['#163', '#7f9', '#3a6']][e.kind];
+    poly([[0, 35], [60, 0], [50, -30], [20, -35], [-20, -35], [-50, -30], [-60, 0]], c(pal[0]), pal[1]);
+    poly([[0, 22], [30, 0], [20, -22], [-20, -22], [-30, 0]], c(pal[2]), pal[1]);
+    if (e.kind === 1) { ctx.fillStyle = '#e9f'; for (let i = 0; i < 4; i++) { const a = e.ph * 2 + i * Math.PI / 2; ctx.beginPath(); ctx.arc(Math.cos(a) * 26, -2 + Math.sin(a) * 26, 4, 0, 6.283); ctx.fill(); } }
+    if (e.kind === 2) { ctx.fillStyle = '#9f9'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * 55, 18, 8, 0, 6.283); ctx.fill(); } }
     ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.arc(0, -2, 9, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#f33'; ctx.fillRect(-48, -4, 10, 14); ctx.fillRect(38, -4, 10, 14);
   }
@@ -515,14 +617,27 @@ function drawLifeIcon(x, y) { poly([[x, y - 8], [x + 6, y + 6], [x - 6, y + 6]],
 function draw() {
   ctx.save();
   if (shake > 0) ctx.translate(rand(-shake / 3, shake / 3), rand(-shake / 3, shake / 3));
-  ctx.fillStyle = '#02020a'; ctx.fillRect(-20, -20, W + 40, H + 40);
-  for (const s of stars) { ctx.fillStyle = `rgba(255,255,255,${0.3 + s.z * 0.3})`; ctx.fillRect(s.x, s.y, s.z > 1.2 ? 2 : 1, s.z > 1.2 ? 2 : 1); }
+  const th = theme(), grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, th.bg[0]); grad.addColorStop(1, th.bg[1]);
+  ctx.fillStyle = grad; ctx.fillRect(-20, -20, W + 40, H + 40);
+  for (const b of blobs) {
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+    g.addColorStop(0, `rgba(${th.blob},${0.07 + b.z * 0.08})`); g.addColorStop(1, `rgba(${th.blob},0)`);
+    ctx.fillStyle = g; ctx.fillRect(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
+  }
+  ctx.fillStyle = th.star;
+  for (const s of stars) { ctx.globalAlpha = 0.3 + s.z * 0.3; ctx.fillRect(s.x, s.y, s.z > 1.2 ? 2 : 1, s.z > 1.2 ? 2 : 1); }
+  ctx.globalAlpha = 1;
 
   if (state !== 'title') {
     for (const u of powerups) {
       const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6', ball: '#fff' }[u.kind];
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(u.x, u.y, 10, 0, 6.283); ctx.fill();
       text({ weapon: 'W', shield: 'S', bomb: 'B', life: '+', ball: 'O' }[u.kind], u.x, u.y + 5, 13, '#000', 'center');
+    }
+    for (const bm of beams) {
+      if (bm.t < 70) { ctx.strokeStyle = `rgba(120,255,240,${0.2 + 0.3 * Math.sin(bm.t / 3) ** 2})`; ctx.lineWidth = 1; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(bm.x, 0); ctx.lineTo(bm.x, H); ctx.stroke(); ctx.setLineDash([]); }
+      else { const g = ctx.createLinearGradient(bm.x - 16, 0, bm.x + 16, 0); g.addColorStop(0, 'rgba(60,255,230,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(60,255,230,0)'); ctx.fillStyle = g; ctx.fillRect(bm.x - 16, 0, 32, H); }
     }
     for (const b of bricks) {
       ctx.fillStyle = b.flash ? '#fff' : b.col; ctx.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
@@ -546,11 +661,18 @@ function draw() {
     // HUD
     text('SCORE ' + String(score).padStart(7, '0'), 10, 24, 16);
     text('HI ' + String(hi).padStart(7, '0'), W - 10, 24, 16, '#fd5', 'right');
-    text('STAGE ' + level, W / 2, 24, 14, '#8f8', 'center');
+    text('STAGE ' + stage, W / 2, 24, 14, '#8f8', 'center');
     // ship level + xp bar
     text('SHIP LV ' + player.lvl, 10, 44, 12, '#8ef');
     ctx.fillStyle = '#123'; ctx.fillRect(90, 35, 120, 7); ctx.fillStyle = '#4fa'; ctx.fillRect(90, 35, 120 * player.xp / player.xpNext, 7);
     ctx.strokeStyle = '#8ab'; ctx.lineWidth = 1; ctx.strokeRect(90.5, 35.5, 120, 7);
+    if (banner.t > 0) {
+      const warn = banner.l1 === 'WARNING';
+      ctx.globalAlpha = Math.min(1, banner.t / 40);
+      text(banner.l1, W / 2, 300, 22, warn ? '#f55' : '#8ef', 'center');
+      text(banner.l2, W / 2, 338, 34, warn ? '#fd5' : '#fff', 'center');
+      ctx.globalAlpha = 1;
+    }
     if (player.lvlFlash > 0) text('LEVEL UP!', player.x, player.y - 40 - (90 - player.lvlFlash) * 0.3, 16, `rgba(150,255,150,${Math.min(1, player.lvlFlash / 30)})`, 'center');
     // energy bar
     const ep = player.energy / maxEnergy();
