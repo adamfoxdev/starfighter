@@ -108,7 +108,7 @@ const sfx = {
 
 // ---------- State ----------
 let state = 'title'; // title | play | pause | over
-let ballFx, fxMax, bolts, mode, lastMode, rushN, rushT, runT, bossT, rushBest, rings, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
+let ballFx, fxMax, bolts, mode, lastMode, rushN, rushT, runT, bossT, rushBest, rings, well, wind, pv, cy, windLines, debris, booms, floats, later, streak, streakT, kfx, hitStop, slowmo, chainDepth, buff, buffMax, hballs, chaos, chaosT, stage, banner, beams, beamT, bombing, blobs, st, upChoices, upFrame, missiles, bricks, balls, combo, waveDone, player, bullets, ebullets, enemies, particles, powerups, stars, score, hi, level, frame, spawnT, shake, flash;
 hi = +(localStorage.getItem('starfighter_hi') || 0);
 rushBest = +(localStorage.getItem('starfighter_rush') || 0);
 
@@ -193,6 +193,16 @@ const THEMES = [
     spawn: [['tank', 3], ['mine', 2.5], ['sniper', 2], ['drone', 1.5], ['line', 1], ['guardian', 3], ['medic', 1.5], ['bomber', 1.5]] },
   { name: 'ION STORM', bg: ['#00100f', '#02302d'], blob: '60,255,220', star: '#bff',
     spawn: [['swarm', 3], ['kamikaze', 2.5], ['mine', 2], ['wing', 2], ['asteroid', 1], ['strafer', 2.5], ['spiral', 1.5], ['guardian', 1], ['splitter', 1]] },
+  { name: 'EVENT HORIZON', mech: 'gravity', hint: 'GRAVITY WELL: it drags your ship, shots and power-ups', bg: ['#050010', '#12002a'], blob: '150,80,255', star: '#dcf',
+    spawn: [['kamikaze', 2], ['swarm', 2], ['mine', 2], ['asteroid', 2], ['sniper', 1.5], ['spiral', 1.5], ['guardian', 1]] },
+  { name: 'SOLAR WIND', mech: 'wind', hint: 'SOLAR WIND: gusts push everything sideways', bg: ['#150a00', '#3a1a00'], blob: '255,170,60', star: '#ffd',
+    spawn: [['wing', 3], ['strafer', 2], ['bomber', 2], ['drone', 2], ['line', 1], ['splitter', 1.5]] },
+  { name: 'FROZEN REACH', mech: 'ice', hint: 'ICE: your ship slides - plan ahead', bg: ['#031018', '#0b2a3a'], blob: '140,220,255', star: '#eff',
+    spawn: [['asteroid', 3], ['guardian', 2], ['tank', 2], ['cloaker', 1.5], ['medic', 1], ['splitter', 2], ['drone', 2]] },
+  { name: 'BLACKOUT', mech: 'dark', hint: 'BLACKOUT: you only see what is near a light', bg: ['#000000', '#02020a'], blob: '60,60,90', star: '#889',
+    spawn: [['cloaker', 2], ['sniper', 2], ['mine', 2.5], ['spiral', 2], ['kamikaze', 2], ['swarm', 1.5], ['medic', 1]] },
+  { name: 'CANYON RUN', mech: 'canyon', hint: 'CANYON: the walls are solid - stay inside', bg: ['#0e0a06', '#241608'], blob: '180,110,50', star: '#fda',
+    spawn: [['tank', 2], ['bomber', 2], ['strafer', 2], ['guardian', 2], ['drone', 2], ['wing', 2], ['mine', 1]] },
 ];
 const theme = () => THEMES[(stage - 1) % THEMES.length];
 stage = 1; banner = { t: 0 }; beams = []; hballs = []; buff = newBuff(); buffMax = newBuff(); resetCarnage(); chaos = null; chaosT = 600;
@@ -212,7 +222,7 @@ function spawn() {
   spawnType(pickType());
   const vp = Math.min(0.3, 0.1 + 0.03 * stage); // volatile enemies burst into bullets when killed
   for (let i = n0; i < enemies.length; i++) if (Math.random() < vp && enemies[i].type !== 'asteroid' && enemies[i].type !== 'mine') enemies[i].volatile = true;
-  for (let i = n0; i < enemies.length; i++) enemies[i].mhp = enemies[i].hp; // for medics
+  for (let i = n0; i < enemies.length; i++) { enemies[i].mhp = enemies[i].hp; if (mech() === 'canyon' && enemies[i].y < 0 && enemies[i].x > 0 && enemies[i].x < W) enemies[i].x = Math.max(leftB(-20) + 24, Math.min(rightB(-20) - 24, enemies[i].x)); } // for medics; canyon keeps spawns between the walls
 }
 function spawnType(t) {
   const hpScale = 1 + Math.floor((level - 1) / 3);
@@ -264,7 +274,8 @@ function enemyShoot(e, aimed) {
 }
 
 // ---------- Carnage: debris, fireballs, chain reactions, kill streaks ----------
-function resetCarnage() { debris = []; booms = []; floats = []; later = []; streak = 0; streakT = 0; kfx = null; hitStop = 0; slowmo = 0; chainDepth = 0; }
+function resetMech() { well = null; wind = { v: 0, target: 0, t: 200 }; pv = { x: 0, y: 0 }; cy = 0; windLines = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, len: 10 + Math.random() * 20 })); }
+function resetCarnage() { resetMech(); debris = []; booms = []; floats = []; later = []; streak = 0; streakT = 0; kfx = null; hitStop = 0; slowmo = 0; chainDepth = 0; }
 const ENEMY_COL = { drone: '#e33', wing: '#b4f', tank: '#4a6', kamikaze: '#fa0', asteroid: '#8a7a6a', dart: '#3df', mine: '#778', sniper: '#3a5fa0', boss: '#c46' };
 function carnage(e) {
   const big = e.boss ? 3 : e.w > 40 ? 2 : 1, col = ENEMY_COL[e.type] || '#ff8a3a';
@@ -334,7 +345,7 @@ function killEnemy(e) {
   if (e.type === 'asteroid' && e.size === 2) for (const sx of [-1, 1]) enemies.push({ type: 'asteroid', size: 1, x: e.x, y: e.y, w: 18, h: 18, hp: 1, vy: e.vy + 0.4, vx: sx * 1.4, rot: 0, vr: rand(-0.1, 0.1), shape: Array.from({ length: 7 }, () => rand(0.7, 1)), pts: 30, fire: 9999 });
   if (e.type === 'mine' && !bombing) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.4; ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, w: 8, h: 8 }); }
   if (e.boss) { slowmo = 24; for (let i = 0; i < 10; i++) later.push({ t: i * 5, x: e.x + rand(-60, 60), y: e.y + rand(-30, 30) }); }
-  if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name }; }
+  if (e.boss) { stage++; banner = { t: 180, l1: 'STAGE ' + stage, l2: theme().name, l3: theme().hint }; }
   if (e.boss && mode === 'rush') { // boss rush: reward, recover and queue the next boss
     rushN++; rushT = 260;
     const bonus = Math.max(500, 3000 - Math.floor((runT - bossT) / 60) * 50); score += bonus;
@@ -489,6 +500,92 @@ function updateChaos() {
   if (c.id === 'rush' && f % 60 === 0) spawnType(f % 120 === 0 ? 'swarm' : 'line');
   if (c.id === 'cross' && f % 18 === 0) { const L = Math.random() < 0.5; ebullets.push({ x: L ? -10 : W + 10, y: rand(80, H - 220), vx: (L ? 1 : -1) * rand(2.8, 4), vy: rand(-0.3, 0.3), w: 8, h: 8 }); }
   if (--c.t <= 0) { chaos = null; chaosT = rand(700, 1000); }
+}
+// ---------- Stage mechanics: gravity, wind, ice, blackout, canyon ----------
+const mech = () => theme().mech;
+const wallL = y => 48 + 26 * Math.sin((y + cy) / 110) + 14 * Math.sin((y + cy) / 37);
+const wallR = y => 48 + 26 * Math.sin((y + cy) / 130 + 2) + 14 * Math.sin((y + cy) / 43 + 1);
+const leftB = y => mech() === 'canyon' ? wallL(y) : 0;
+const rightB = y => mech() === 'canyon' ? W - wallR(y) : W;
+function updateMech() {
+  const p = player, m = mech(), boss = enemies.some(e => e.boss);
+  if (m === 'canyon') {
+    cy += 1.5;
+    for (const b of bullets) if (b.x < leftB(b.y) || b.x > rightB(b.y)) { b.dead = true; burst(b.x, b.y, 2, '#a87a42', 2); }
+    for (const b of ebullets) if (b.x < leftB(b.y) - 6 || b.x > rightB(b.y) + 6) { b.dead = true; b.x = -999; }
+  }
+  if (m === 'wind') {
+    if (--wind.t <= 0) { wind.t = rand(360, 560); wind.target = Math.random() < 0.25 ? 0 : (Math.random() < 0.5 ? -1 : 1) * rand(0.6, 1); }
+    wind.v += (wind.target - wind.v) * 0.02;
+    const v = wind.v;
+    p.x += v * 1.3;
+    for (const b of bullets) b.x += v * 0.9;
+    for (const b of ebullets) b.x += v * 0.7;
+    for (const e of enemies) if (!e.boss) e.x += v * 0.6;
+    for (const u of powerups) u.x += v * 0.8;
+    for (const l of windLines) { l.x += v * (6 + l.len * 0.15); if (l.x < -40) l.x = W + 20; if (l.x > W + 40) l.x = -20; }
+  }
+  if (m === 'gravity' && !boss) {
+    if (!well) well = { x: W / 2, y: 300, t: 0 };
+    well.t++; well.x = W / 2 + Math.sin(well.t / 330) * 150; well.y = 300 + Math.sin(well.t / 200) * 110;
+    const pull = (o, k) => { const dx = well.x - o.x, dy = well.y - o.y, d = Math.hypot(dx, dy) || 1; return { dx, dy, d, ux: dx / d, uy: dy / d, f: k }; };
+    { const g = pull(p, 1), f = Math.min(2.6, 5200 / (g.d * g.d + 1500)); p.x += g.ux * f; p.y += g.uy * f;
+      if (g.d < 20) { hurtPlayer(); p.x -= g.ux * 45; p.y -= g.uy * 45; burst(p.x, p.y, 10, '#c8f', 3); } }
+    for (const b of ebullets) { const g = pull(b); if (g.d < 260) { b.vx += g.ux * 0.12; b.vy += g.uy * 0.12; } if (g.d < 14) { b.dead = true; b.x = -999; } }
+    for (const b of bullets) { const g = pull(b); if (g.d < 260) { b.vx += g.ux * 0.15; b.vy += g.uy * 0.15; } if (g.d < 14) b.dead = true; }
+    for (const u of powerups) { const g = pull(u); if (g.d < 200) { u.x += g.ux * 1.2; u.y += g.uy * 1.2; } if (g.d < 14) u.dead = true; }
+    for (const ball of balls) { const g = pull(ball); if (g.d < 200 && !ball.stuck && !ball.mag) { ball.vx += g.ux * 0.08; ball.vy += g.uy * 0.08; const sp = Math.hypot(ball.vx, ball.vy); if (sp > 10) { ball.vx *= 10 / sp; ball.vy *= 10 / sp; } } }
+  } else if (m !== 'gravity') well = null;
+  if (m === 'gravity' && boss) well = null;
+  p.x = Math.max(leftB(p.y) + 16, Math.min(rightB(p.y) - 16, p.x)); p.y = Math.max(40, Math.min(H - 30, p.y));
+}
+function drawMechBack() {
+  const m = mech(), t = frame;
+  if (m === 'canyon' && state !== 'title') {
+    for (const side of [0, 1]) {
+      ctx.beginPath(); ctx.moveTo(side ? W : 0, -10);
+      for (let y = -10; y <= H + 12; y += 12) ctx.lineTo(side ? rightB(y) : leftB(y), y);
+      ctx.lineTo(side ? W : 0, H + 12); ctx.closePath();
+      ctx.fillStyle = '#2e2012'; ctx.fill(); ctx.strokeStyle = '#b8864a'; ctx.lineWidth = 3; ctx.stroke();
+    }
+  }
+  if (m === 'wind') {
+    ctx.strokeStyle = 'rgba(255,220,150,0.22)'; ctx.lineWidth = 1;
+    for (const l of windLines) { ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x - Math.sign(wind.v || 1) * l.len * Math.min(1, Math.abs(wind.v) * 1.5 + 0.2), l.y); ctx.stroke(); }
+    if (Math.abs(wind.target) > 0.3 && Math.floor(t / 20) % 2 === 0 && state === 'play') text(wind.target > 0 ? '>>> GUST >>>' : '<<< GUST <<<', W / 2, 84, 14, '#fc8', 'center');
+  }
+  if (m === 'ice') {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.75); g.addColorStop(0, 'rgba(150,220,255,0)'); g.addColorStop(1, 'rgba(150,220,255,0.22)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  if (m === 'gravity' && well) {
+    const g = ctx.createRadialGradient(well.x, well.y, 8, well.x, well.y, 110); g.addColorStop(0, 'rgba(170,90,255,0.55)'); g.addColorStop(1, 'rgba(170,90,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(well.x - 110, well.y - 110, 220, 220);
+    for (let i = 0; i < 8; i++) { const a = t * 0.08 + i * 0.785, r = 22 + ((t * 0.6 + i * 9) % 40); ctx.fillStyle = `rgba(220,170,255,${1 - (r - 22) / 40})`; ctx.fillRect(well.x + Math.cos(a) * r - 1, well.y + Math.sin(a) * r * 0.6 - 1, 3, 3); }
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(well.x, well.y, 14, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#c8f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(well.x, well.y, 17, 0, 6.283); ctx.stroke();
+  }
+}
+let darkCv = null, darkCtx = null;
+function drawDark() {
+  if (mech() !== 'dark') return;
+  if (!darkCv) { darkCv = document.createElement('canvas'); darkCv.width = W; darkCv.height = H; darkCtx = darkCv.getContext('2d'); }
+  const d = darkCtx; d.globalCompositeOperation = 'source-over'; d.fillStyle = 'rgba(0,0,6,0.93)'; d.fillRect(0, 0, W, H);
+  d.globalCompositeOperation = 'destination-out';
+  const hole = (x, y, r) => { const g = d.createRadialGradient(x, y, r * 0.15, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); d.fillStyle = g; d.fillRect(x - r, y - r, r * 2, r * 2); };
+  hole(player.x, player.y, 150);
+  for (const b of bullets) hole(b.x, b.y, 42);
+  for (const b of ebullets) hole(b.x, b.y, 26);
+  for (const b of balls) hole(b.x, b.y, 85);
+  for (const b of booms) hole(b.x, b.y, b.size * 1.6);
+  for (const m of missiles) hole(m.x, m.y, 60);
+  for (const u of powerups) hole(u.x, u.y, 38);
+  for (const h of hballs) hole(h.x, h.y, 55);
+  for (const e of enemies) if (e.boss) hole(e.x, e.y, 130);
+  for (const b of bolts) hole((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2, 60);
+  for (const o of ballFx.orbit > 0 ? orbPos() : []) hole(o.x, o.y, 70);
+  if (flash > 0) hole(W / 2, H / 2, 700);
+  ctx.drawImage(darkCv, 0, 0);
 }
 function updateBeams() {
   const p = player;
@@ -668,8 +765,9 @@ function updateBricks() {
       }
     }
     ball.x += ball.vx; ball.y += ball.vy;
-    if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); sfx.bounce(); }
-    if (ball.x > W - ball.r) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); sfx.bounce(); }
+    const lb = leftB(ball.y), rb = rightB(ball.y);
+    if (ball.x < lb + ball.r) { ball.x = lb + ball.r; ball.vx = Math.abs(ball.vx); sfx.bounce(); }
+    if (ball.x > rb - ball.r) { ball.x = rb - ball.r; ball.vx = -Math.abs(ball.vx); sfx.bounce(); }
     if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); sfx.bounce(); }
     if (ball.y > H + 20 && !ball.mag) { ball.dead = true; combo = 0; continue; }
     if (ball.mag) continue;
@@ -751,12 +849,13 @@ function update() {
   if (keys.ArrowUp || keys.KeyW || keys.KeyI || keys.Numpad8 || keys.Numpad7 || keys.Numpad9) dy -= 1;
   if (keys.ArrowDown || keys.KeyS || keys.KeyK || keys.Numpad2 || keys.Numpad1 || keys.Numpad3) dy += 1;
   if (dx && dy) { dx *= 0.707; dy *= 0.707; }
-  p.x += dx * sp; p.y += dy * sp;
+  if (mech() === 'ice') { pv.x += (dx * sp - pv.x) * 0.06; pv.y += (dy * sp - pv.y) * 0.06; p.x += pv.x; p.y += pv.y; }
+  else { pv.x = pv.y = 0; p.x += dx * sp; p.y += dy * sp; }
   if (touch) { // follow finger, offset above it
     const tx = touch.x, ty = touch.y - 60;
     p.x += Math.max(-8, Math.min(8, tx - p.x)); p.y += Math.max(-8, Math.min(8, ty - p.y));
   }
-  p.x = Math.max(16, Math.min(W - 16, p.x)); p.y = Math.max(40, Math.min(H - 30, p.y));
+  { const ox = p.x, oy = p.y; p.x = Math.max(leftB(p.y) + 16, Math.min(rightB(p.y) - 16, p.x)); p.y = Math.max(40, Math.min(H - 30, p.y)); if (p.x !== ox) pv.x = 0; if (p.y !== oy) pv.y = 0; }
   if (p.inv > 0) p.inv--;
   if (p.shield > 0) p.shield -= 0; // shield lasts until hit
 
@@ -792,6 +891,7 @@ function update() {
   updateBricks();
   updateBeams();
   updateChaos();
+  updateMech();
   updateHBalls();
   updateBuffs();
   updateCarnage();
@@ -1098,6 +1198,7 @@ function draw() {
   for (const s of stars) { ctx.globalAlpha = 0.3 + s.z * 0.3; ctx.fillRect(s.x, s.y, s.z > 1.2 ? 2 : 1, s.z > 1.2 ? 2 : 1); }
   ctx.globalAlpha = 1;
 
+  drawMechBack();
   if (state !== 'title') {
     for (const u of powerups) {
       const col = { weapon: '#f80', shield: '#0cf', bomb: '#f33', life: '#3f6', ball: '#fff', fire: '#f62', multi: '#6f6', mega: '#c6f', chain: '#fe4', home: '#4cf', pulse: '#f8c', catch: '#ddd', split: '#bf4', blast: '#f44', orbit: '#8a9bff', rapid: '#ffd23a', pierce: '#7ff', slow: '#8aa6ff', wing: '#3ddc84', laser: '#ff4df0', ghost: '#c8c8d8', xp: '#fc3' }[u.kind];
@@ -1154,6 +1255,7 @@ function draw() {
     drawCarnage();
     for (const q of particles) { ctx.globalAlpha = q.life / q.max; ctx.fillStyle = q.col; ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3); }
     ctx.globalAlpha = 1;
+    drawDark();
     // HUD
     text('SCORE ' + String(score).padStart(7, '0'), 10, 24, 16);
     text('HI ' + String(hi).padStart(7, '0'), W - 10, 24, 16, '#fd5', 'right');
@@ -1168,6 +1270,7 @@ function draw() {
       ctx.globalAlpha = Math.min(1, banner.t / 40);
       text(banner.l1, W / 2, 300, 22, warn ? '#f55' : banner.l1 === 'CHAOS!' ? '#f90' : '#8ef', 'center');
       text(banner.l2, W / 2, 338, 34, warn ? '#fd5' : '#fff', 'center');
+      if (banner.l3) text(banner.l3, W / 2, 368, 13, '#cde', 'center');
       ctx.globalAlpha = 1;
     }
     if (player.lvlFlash > 0) text('LEVEL UP!', player.x, player.y - 40 - (90 - player.lvlFlash) * 0.3, 16, `rgba(150,255,150,${Math.min(1, player.lvlFlash / 30)})`, 'center');
