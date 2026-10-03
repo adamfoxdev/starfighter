@@ -226,11 +226,24 @@ function updateBricks() {
   for (const bl of ebullets) for (const b of bricks) if (!b.dead && !bl.dead && hitRect(bl, b)) { bl.dead = true; burst(bl.x, bl.y, 3, '#f6a', 1.5); }
   // balls
   for (const ball of balls) {
+    // magnet: once the ball slips past the ship, pull it back and relaunch
+    if (!ball.mag && ball.vy > 0 && ball.y > p.y + 8) { ball.mag = true; sfx.shieldOn(); }
+    if (ball.mag) {
+      const tx = p.x, ty = p.y - 14, dx = tx - ball.x, dy = ty - ball.y, d = Math.hypot(dx, dy) || 1;
+      const sp = Math.max(ball.spd, 7) + 2;
+      ball.vx += (dx / d * sp - ball.vx) * 0.25; ball.vy += (dy / d * sp - ball.vy) * 0.25;
+      if (d < 20) {
+        ball.mag = false; combo = 0; ball.spd = Math.max(5, ball.spd - 0.5);
+        const a = (Math.random() - 0.5) * 1.2;
+        ball.vx = Math.sin(a) * ball.spd; ball.vy = -Math.cos(a) * ball.spd; ball.y = p.y - 24; sfx.bounce();
+      }
+    }
     ball.x += ball.vx; ball.y += ball.vy;
     if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); sfx.bounce(); }
     if (ball.x > W - ball.r) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); sfx.bounce(); }
     if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); sfx.bounce(); }
-    if (ball.y > H + 20) { ball.dead = true; combo = 0; continue; }
+    if (ball.y > H + 20 && !ball.mag) { ball.dead = true; combo = 0; continue; }
+    if (ball.mag) continue;
     // ship as paddle
     if (ball.vy > 0 && Math.abs(ball.x - p.x) < 24 && ball.y + ball.r > p.y - 22 && ball.y - ball.r < p.y + 8) {
       const off = Math.max(-1, Math.min(1, (ball.x - p.x) / 24));
@@ -448,6 +461,7 @@ function draw() {
       const g = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, 14);
       g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(120,200,255,0)');
       ctx.fillStyle = g; ctx.fillRect(ball.x - 14, ball.y - 14, 28, 28);
+      if (ball.mag) { ctx.strokeStyle = 'rgba(120,220,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(ball.x, ball.y); ctx.stroke(); }
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, 6.283); ctx.fill();
     }
     ctx.fillStyle = '#9ff'; for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 14);
